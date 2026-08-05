@@ -486,6 +486,18 @@ namespace unvell.ReoGrid.Drawing
                             null, null);
 
                         g.PlatformGraphics.DrawGlyphRun(lastBrush, gr);
+#elif AVALONIA
+                        // Avalonia：用 FormattedText 绘制富文本片段。
+                        var avaloniaTypeface = b.FontInfo?.Typeface
+                            ?? new Avalonia.Media.Typeface(string.IsNullOrEmpty(r.FontName) ? "Arial" : r.FontName);
+                        var ft = new Avalonia.Media.FormattedText(
+                            b.Str ?? string.Empty,
+                            System.Globalization.CultureInfo.CurrentCulture,
+                            Avalonia.Media.FlowDirection.LeftToRight,
+                            avaloniaTypeface,
+                            r.FontSize * 1.33d,
+                            lastBrush);
+                        g.PlatformGraphics.DrawText(ft, new Avalonia.Point(tx, ty));
 #endif // WPF
                     }
                 }
@@ -1116,6 +1128,18 @@ namespace unvell.ReoGrid.Drawing.Text
 
                     fontInfo.Ascent = typeface.FontFamily.Baseline;
                     fontInfo.LineHeight = typeface.CapsHeight;
+#elif AVALONIA
+                    // Avalonia：Typeface + 近似行高；字宽在 AppendText 用 FormattedText 测量。
+                    string avaloniaFontName = string.IsNullOrEmpty(this.fontName) ? "Arial" : this.fontName;
+                    this.fontInfo.Typeface = new Avalonia.Media.Typeface(
+                        new Avalonia.Media.FontFamily(avaloniaFontName),
+                        PlatformUtility.ToAvaloniaFontStyle(this.fontStyles),
+                        (this.fontStyles & FontStyles.Bold) == FontStyles.Bold
+                            ? Avalonia.Media.FontWeight.Bold
+                            : Avalonia.Media.FontWeight.Normal,
+                        Avalonia.Media.FontStretch.Normal);
+                    fontInfo.Ascent = renderFontSize * 1.33 * 0.8;
+                    fontInfo.LineHeight = renderFontSize * 1.33;
 #endif // WPF
 
                     //fontInfo.Height = font.Height;
@@ -1152,10 +1176,11 @@ namespace unvell.ReoGrid.Drawing.Text
 
 #if WINFORM
             this.TextSizes = new List<RGFloat>();
-#elif WPF
+#elif WPF || AVALONIA
+            // Avalonia 与 WPF 共用度量列表；原先仅 WPF 初始化导致 Avalonia 打开富文本单元格空引用。
             this.TextSizes = new List<double>();
             this.GlyphIndexes = new List<ushort>();
-#endif // WPF
+#endif // WPF || AVALONIA
         }
 
         #region Text
@@ -1166,15 +1191,31 @@ namespace unvell.ReoGrid.Drawing.Text
             set
             {
                 this.text = string.Empty;
+                if (this.TextSizes == null)
+                {
+#if WINFORM || ANDROID
+                    this.TextSizes = new List<RGFloat>();
+#elif WPF || AVALONIA
+                    this.TextSizes = new List<double>();
+#endif
+                }
+#if WPF || AVALONIA
+                if (this.GlyphIndexes == null)
+                    this.GlyphIndexes = new List<ushort>();
+                this.GlyphIndexes.Clear();
+#endif
                 this.TextSizes.Clear();
-                this.TextSizes.Capacity = this.text.Length;
+                this.TextSizes.Capacity = (value ?? string.Empty).Length;
 
-                this.AppendText(value);
+                this.AppendText(value ?? string.Empty);
             }
         }
 
         public void AppendText(string text)
         {
+            if (string.IsNullOrEmpty(text))
+                return;
+
             this.text += text;
 
 #if WINFORM
@@ -1231,7 +1272,19 @@ namespace unvell.ReoGrid.Drawing.Text
                 double width = glyphTypeface.AdvanceWidths[glyphIndex] * size;
                 this.TextSizes.Add(width);
             }
+#elif AVALONIA
+            // Avalonia 12：用 FormattedText 逐字测宽，GlyphIndex 占位供 Box 构造。
+            if (this.GlyphIndexes.Capacity < text.Length)
+                this.GlyphIndexes.Capacity = text.Length;
 
+            string fontName = string.IsNullOrEmpty(this.fontName) ? "Arial" : this.fontName;
+            for (int n = 0; n < text.Length; n++)
+            {
+                string ch = text[n].ToString();
+                var measured = PlatformUtility.MeasureText(null, ch, fontName, this.fontSize, this.fontStyles);
+                this.GlyphIndexes.Add(0);
+                this.TextSizes.Add(measured.Width > 0 ? measured.Width : this.fontSize * 0.6);
+            }
 #endif // WINFORM
         }
         #endregion // Text
@@ -1293,6 +1346,8 @@ namespace unvell.ReoGrid.Drawing.Text
 #elif WPF
         public System.Windows.Media.Typeface Typeface { get; set; }
         public System.Windows.Media.GlyphTypeface GlyphTypeface { get; set; }
+#elif AVALONIA
+        public Avalonia.Media.Typeface Typeface { get; set; }
 #endif // WPF
 
         public RGFloat Ascent { get; set; }
