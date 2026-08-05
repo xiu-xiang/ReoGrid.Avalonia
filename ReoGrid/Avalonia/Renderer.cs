@@ -65,6 +65,15 @@ namespace unvell.ReoGrid.Rendering
 
         public void DrawLine(Pen p, Point startPoint, Point endPoint)
         {
+            // Linux/Skia：空 Pen 或非法坐标会导致原生段错误
+            if (g == null || p == null)
+                return;
+            if (double.IsNaN(startPoint.X) || double.IsNaN(startPoint.Y)
+                || double.IsNaN(endPoint.X) || double.IsNaN(endPoint.Y)
+                || double.IsInfinity(startPoint.X) || double.IsInfinity(startPoint.Y)
+                || double.IsInfinity(endPoint.X) || double.IsInfinity(endPoint.Y))
+                return;
+
 #if !GRID_GUIDELINE
             double halfPenWidth = p.Thickness / 2;
 
@@ -86,12 +95,15 @@ namespace unvell.ReoGrid.Rendering
 
         public void DrawLine(Point startPoint, Point endPoint, SolidColor color)
         {
-            this.g.DrawLine(this.resourceManager.GetPen(color), (Point)startPoint, (Point)endPoint);
+            var pen = this.resourceManager.GetPen(color);
+            if (pen == null) return;
+            this.g.DrawLine(pen, (Point)startPoint, (Point)endPoint);
         }
 
         public void DrawLine(double x1, double y1, double x2, double y2, SolidColor color)
         {
             var pen = this.resourceManager.GetPen(color);
+            if (pen == null) return;
             this.DrawLine(pen, x1, y1, x2, y2);
         }
 
@@ -99,7 +111,9 @@ namespace unvell.ReoGrid.Rendering
         {
             var p = this.resourceManager.GetPen(color, width, GetDashStyle(style));
 
-            if (p != null)
+            if (p == null)
+                return;
+
             {
                 g.DrawLine(p, new Avalonia.Point(x1, y1), new Avalonia.Point(x2, y2));
             }
@@ -162,24 +176,35 @@ namespace unvell.ReoGrid.Rendering
         #region Rectangle
         public void DrawRectangle(Pen p, Rectangle rect)
         {
+            if (p == null || !IsSafeDrawRect(rect))
+                return;
             g.DrawRectangle(null, p, rect);
         }
 
         public void DrawRectangle(Pen p, double x, double y, double w, double h)
         {
+            if (p == null || w <= 0 || h <= 0
+                || double.IsNaN(x) || double.IsNaN(y) || double.IsNaN(w) || double.IsNaN(h))
+                return;
             g.DrawRectangle(null, p, new Rect(x, y, w, h));
         }
 
         public void DrawRectangle(Rectangle rect, SolidColor color)
         {
+            if (!IsSafeDrawRect(rect))
+                return;
             var p = this.resourceManager.GetPen(color);
             if (p != null) this.g.DrawRectangle(null, p, (Rect)rect);
         }
 
         public void DrawRectangle(double x, double y, double width, double height, SolidColor color)
         {
+            if (width <= 0 || height <= 0
+                || double.IsNaN(x) || double.IsNaN(y) || double.IsNaN(width) || double.IsNaN(height))
+                return;
             var p = this.resourceManager.GetPen(color);
-            this.g.DrawRectangle(null, p, new Rect(x, y, width, height));
+            if (p != null)
+                this.g.DrawRectangle(null, p, new Rect(x, y, width, height));
         }
 
         public void FillRectangle(HatchStyles style, SolidColor hatchColor, SolidColor bgColor, Rectangle rect)
@@ -194,6 +219,9 @@ namespace unvell.ReoGrid.Rendering
 
         public void FillRectangle(Rectangle rect, IColor color)
         {
+            if (!IsSafeDrawRect(rect))
+                return;
+
             if (color is SolidColor)
             {
                 this.g.DrawRectangle(this.resourceManager.GetBrush((SolidColor)color), null, (Rect)rect);
@@ -202,6 +230,10 @@ namespace unvell.ReoGrid.Rendering
 
         public void FillRectangle(double x, double y, double width, double height, IColor color)
         {
+            if (width <= 0 || height <= 0
+                || double.IsNaN(x) || double.IsNaN(y) || double.IsNaN(width) || double.IsNaN(height))
+                return;
+
             if (color is SolidColor)
             {
                 this.g.DrawRectangle(this.resourceManager.GetBrush((SolidColor)color), null, new Rect(x, y, width, height));
@@ -210,32 +242,54 @@ namespace unvell.ReoGrid.Rendering
 
         public void FillRectangle(RGBrush b, double x, double y, double width, double height)
         {
+            if (b == null || width <= 0 || height <= 0
+                || double.IsNaN(x) || double.IsNaN(y) || double.IsNaN(width) || double.IsNaN(height))
+                return;
+
             this.g.DrawRectangle(b, null, new Rect(x, y, width, height));
         }
 
         public void FillRectangleLinear(SolidColor color1, SolidColor color2, double angle, Rectangle rect)
         {
-            //new ConicGradientBrush
-            var lgb = new LinearGradientBrush();
+            // Linux/Skia：非法矩形会导致 libSkiaSharp memmove 段错误
+            if (g == null
+                || rect.Width <= 0 || rect.Height <= 0
+                || double.IsNaN(rect.X) || double.IsNaN(rect.Y)
+                || double.IsNaN(rect.Width) || double.IsNaN(rect.Height)
+                || double.IsInfinity(rect.Width) || double.IsInfinity(rect.Height))
+            {
+                return;
+            }
+
+            RelativePoint startPoint;
+            RelativePoint endPoint;
 
             if (Math.Abs(angle - 0) < 1e-9)
             {
-                lgb.StartPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative);
-                lgb.EndPoint = new RelativePoint(1, 0.5, RelativeUnit.Relative);
+                startPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative);
+                endPoint = new RelativePoint(1, 0.5, RelativeUnit.Relative);
             }
             else if (Math.Abs(angle - 90) < 1e-9)
             {
-                lgb.StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative);
-                lgb.EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative);
+                startPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative);
+                endPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative);
             }
             else
             {
-                var radian = angle / 180 % Math.PI;
-
+                // 未实现任意角度时回退垂直渐变，避免未初始化 Start/End 点
+                startPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative);
+                endPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative);
             }
 
-            lgb.GradientStops.Add(new GradientStop(color1, 0));
-            lgb.GradientStops.Add(new GradientStop(color2, 1));
+            // 渲染路径使用不可变笔刷，降低跨线程/复用导致的原生崩溃风险
+            var lgb = new ImmutableLinearGradientBrush(
+                new[]
+                {
+                    new ImmutableGradientStop(0, color1),
+                    new ImmutableGradientStop(1, color2),
+                },
+                startPoint: startPoint,
+                endPoint: endPoint);
 
             g.DrawRectangle(lgb, null, (Rect)rect);
         }
@@ -253,22 +307,36 @@ namespace unvell.ReoGrid.Rendering
 
         public void DrawAndFillRectangle(Rectangle rect, SolidColor lineColor, IColor fillColor)
         {
-            if (fillColor is SolidColor)
-            {
-                this.g.DrawRectangle(this.resourceManager.GetBrush((SolidColor)fillColor),
-                    this.resourceManager.GetPen(lineColor), (Rect)rect);
-            }
+            if (!IsSafeDrawRect(rect))
+                return;
+
+            // 填充与描边分开：笔刷/画笔任一可用时仍应绘制，避免缺 pen 时整块背景被跳过（图表透底）
+            Avalonia.Media.IBrush b = null;
+            if (fillColor is SolidColor solid)
+                b = this.resourceManager.GetBrush(solid);
+            else if (fillColor != null)
+                b = this.resourceManager.GetBrush(fillColor.ToSolidColor());
+
+            var p = this.resourceManager.GetPen(lineColor);
+            if (b != null)
+                this.g.DrawRectangle(b, null, (Rect)rect);
+            if (p != null)
+                this.g.DrawRectangle(null, p, (Rect)rect);
         }
 
         public void DrawAndFillRectangle(Rectangle rect, SolidColor lineColor, IColor fillColor, double width, LineStyles lineStyle)
         {
-            var p = this.resourceManager.GetPen(lineColor, width, GetDashStyle(lineStyle));
-            var b = this.resourceManager.GetBrush(fillColor.ToSolidColor());
+            if (!IsSafeDrawRect(rect))
+                return;
 
-            if (p != null && b != null)
-            {
-                this.g.DrawRectangle(b, p, rect);
-            }
+            var b = fillColor != null ? this.resourceManager.GetBrush(fillColor.ToSolidColor()) : null;
+            var p = this.resourceManager.GetPen(lineColor, width, GetDashStyle(lineStyle));
+
+            // 先填后描，互不依赖；否则 pen 获取失败时白色底板整段丢失
+            if (b != null)
+                this.g.DrawRectangle(b, null, (Rect)rect);
+            if (p != null)
+                this.g.DrawRectangle(null, p, (Rect)rect);
         }
         #endregion // Rectangle
 
@@ -362,16 +430,38 @@ namespace unvell.ReoGrid.Rendering
         #endregion // Text
 
         #region Clip
-        private Stack<PlatformGraphics.PushedState> clipsStack = new Stack<PlatformGraphics.PushedState>();
+        private Stack<PlatformGraphics.PushedState?> clipsStack = new Stack<PlatformGraphics.PushedState?>();
+
+        /// <summary>
+        /// 判断矩形是否可安全交给 Skia 裁剪/填充（Linux 上非法尺寸易 SIGSEGV）。
+        /// </summary>
+        protected static bool IsSafeDrawRect(Rectangle rect)
+        {
+            return rect.Width > 0 && rect.Height > 0
+                && !double.IsNaN(rect.X) && !double.IsNaN(rect.Y)
+                && !double.IsNaN(rect.Width) && !double.IsNaN(rect.Height)
+                && !double.IsInfinity(rect.X) && !double.IsInfinity(rect.Y)
+                && !double.IsInfinity(rect.Width) && !double.IsInfinity(rect.Height);
+        }
+
         public void PushClip(Rectangle clipRect)
         {
+            // 非法裁剪矩形：压入 null 占位，保证与 PopClip 配对，且不把坏 Rect 交给 Skia
+            if (g == null || !IsSafeDrawRect(clipRect))
+            {
+                clipsStack.Push(null);
+                return;
+            }
+
             clipsStack.Push(g.PushClip((Rect)clipRect));
         }
 
         public void PopClip()
         {
-            //this.g.Pop();
-            clipsStack.Pop().Dispose();
+            if (clipsStack.Count == 0)
+                return;
+
+            clipsStack.Pop()?.Dispose();
         }
         #endregion // Clip
 
@@ -488,18 +578,24 @@ namespace unvell.ReoGrid.Rendering
 
         public void FillPolygon(IColor color, params Graphics.Point[] points)
         {
-            if (!color.IsTransparent)
+            // 原实现未设置 StartPoint/IsClosed，几何无效；Linux Skia 上可能导致原生崩溃
+            if (g == null || color.IsTransparent || points == null || points.Length < 3)
+                return;
+
+            var figure = new PathFigure
             {
-                var geo = new PathGeometry();
-
-                for (int i = 1, k = 1; i < points.Length; i++, k++)
-                {
-                    geo.Figures.Add(new PathFigure() { Segments = { new LineSegment() { Point = points[k - 1] } } });
-                    //geo.AddGeometry(new LineGeometry(points[k - 1], points[k]));
-                }
-
-                g.DrawGeometry(new SolidColorBrush(color.ToSolidColor()), null, geo);
+                StartPoint = points[0],
+                IsClosed = true,
+                IsFilled = true,
+            };
+            for (int i = 1; i < points.Length; i++)
+            {
+                figure.Segments.Add(new LineSegment { Point = points[i] });
             }
+
+            var geo = new PathGeometry();
+            geo.Figures.Add(figure);
+            g.DrawGeometry(new SolidColorBrush(color.ToSolidColor()), null, geo);
         }
         #endregion // Polygon
 
@@ -508,7 +604,10 @@ namespace unvell.ReoGrid.Rendering
 
         public void Reset()
         {
-            this.transformStack.Clear();
+            // 上一帧 DrawingContext 已失效：不可 Dispose 旧 PushedState（会踩已释放原生资源）。
+            // 必须清空 clips/transform，避免下一帧 Pop 到跨帧残留导致 Linux Skia 段错误。
+            clipsStack.Clear();
+            transformStack.Clear();
         }
 
         internal void SetPlatformGraphics(PlatformGraphics dc)
@@ -567,7 +666,21 @@ namespace unvell.ReoGrid.Rendering
 
         public Graphics.Size MeasureCellText(Cell cell, DrawMode drawMode, double scale)
         {
-            if (cell.InnerStyle.RotationAngle != 0)
+            if (cell == null)
+                return Graphics.Size.Zero;
+
+            // 粘贴后可能仍残留旧 FormattedText，或 FontDirty 未刷；与 DrawCellText 一致先更新。
+            if (cell.formattedText == null || cell.FontDirty)
+            {
+                var sheet = cell.Worksheet;
+                if (sheet == null)
+                    return Graphics.Size.Zero;
+                sheet.UpdateCellFont(cell);
+                if (cell.formattedText == null)
+                    return Graphics.Size.Zero;
+            }
+
+            if (cell.InnerStyle != null && cell.InnerStyle.RotationAngle != 0)
             {
                 Matrix m = Matrix.Identity;
 
@@ -586,16 +699,26 @@ namespace unvell.ReoGrid.Rendering
 
         public void DrawCellText(Cell cell, SolidColor textColor, DrawMode drawMode, double scale)
         {
-            var sheet = cell.Worksheet;
+            var sheet = cell?.Worksheet;
 
             if (sheet == null) return;
 
-            if (cell.formattedText == null)
+            // FontDirty 时即使已有 FormattedText 也要重建，否则粘贴数值不刷新显示。
+            if (cell.formattedText == null || cell.FontDirty)
             {
                 sheet.UpdateCellFont(cell);
             }
 
-            if (cell.InnerStyle.RotationAngle != 0)
+            if (cell.formattedText == null)
+                return;
+
+            // Linux/Skia：非法坐标的 DrawText 可能原生崩溃
+            var loc = cell.TextBounds.Location;
+            if (double.IsNaN(loc.X) || double.IsNaN(loc.Y)
+                || double.IsInfinity(loc.X) || double.IsInfinity(loc.Y))
+                return;
+
+            if (cell.InnerStyle != null && cell.InnerStyle.RotationAngle != 0)
             {
                 Matrix m = Avalonia.Matrix.Identity;
                 //m.Rotate(cell.InnerStyle.RotationAngle);
@@ -609,7 +732,7 @@ namespace unvell.ReoGrid.Rendering
             }
             else
             {
-                this.PlatformGraphics.DrawText(cell.formattedText, cell.TextBounds.Location);
+                this.PlatformGraphics.DrawText(cell.formattedText, loc);
             }
         }
 
@@ -645,15 +768,20 @@ namespace unvell.ReoGrid.Rendering
             double dpi = PlatformUtility.GetDPI();
             double fontSize = cell.InnerStyle.FontSize * sheet.renderScaleFactor * dpi / 72.0;
 
-            if (cell.formattedText == null || cell.formattedText.ToString() != cell.InnerDisplay)
+            if (cell.formattedText == null || cell.formattedText.ToString() != (cell.InnerDisplay ?? string.Empty))
             {
                 SolidColor textColor = DecideTextColor(cell);
 
-                cell.formattedText = new Avalonia.Media.FormattedText(cell.InnerDisplay,
+                // InnerDisplay 在粘贴空合并区时可能为 null。
+                cell.formattedText = new Avalonia.Media.FormattedText(cell.InnerDisplay ?? string.Empty,
                     System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                    Typeface.Default, // base.resourceManager.GetTypeface(cell.InnerStyle.FontName),
+                    Typeface.Default,
                     fontSize,
                     base.resourceManager.GetBrush(textColor));
+
+                // 新建 FormattedText 后立即套用单元格字体名（勿停留在 Typeface.Default）
+                if (!string.IsNullOrEmpty(cell.InnerStyle.FontName))
+                    cell.formattedText.SetFontFamily(cell.InnerStyle.FontName);
             }
             else if (reason == Core.UpdateFontReason.FontChanged || reason == Core.UpdateFontReason.ScaleChanged)
             {
@@ -667,6 +795,18 @@ namespace unvell.ReoGrid.Rendering
             }
 
             var ft = cell.formattedText;
+
+            // 同步自动换行：NoWrap 必须用 Infinity，切勿设为 0（Avalonia 会按行宽 0 排版导致文字不可见）
+            if (cell.InnerStyle.TextWrapMode != TextWrapMode.NoWrap)
+            {
+                double cellWidth = Math.Max(1, cell.Bounds.Width * sheet.renderScaleFactor - 4);
+                ft.MaxTextWidth = cellWidth;
+                ft.Trimming = TextTrimming.None;
+            }
+            else
+            {
+                ft.MaxTextWidth = double.PositiveInfinity;
+            }
 
             if (reason == Core.UpdateFontReason.FontChanged || reason == Core.UpdateFontReason.ScaleChanged)
             {
@@ -755,13 +895,24 @@ namespace unvell.ReoGrid.Rendering
 
         public void DrawHeaderText(string text, RGBrush brush, Rectangle rect)
         {
+            // Linux/Skia：非法表头矩形或空画笔时跳过，避免原生崩溃
+            if (this.PlatformGraphics == null || brush == null || string.IsNullOrEmpty(text) || !IsSafeDrawRect(rect))
+                return;
+
+            double fontSize = headerTextScale / 72d * 96d;
+            if (fontSize < 0.5 || double.IsNaN(fontSize) || double.IsInfinity(fontSize))
+                return;
+
             var ft = new Avalonia.Media.FormattedText(text,
                 System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                Typeface.Default, headerTextScale / 72f * 96f, brush);
+                Typeface.Default, fontSize, brush);
 
+            double x = rect.X + (rect.Width - ft.Width) / 2;
+            double y = rect.Y + (rect.Height - ft.Height) / 2;
+            if (double.IsNaN(x) || double.IsNaN(y) || double.IsInfinity(x) || double.IsInfinity(y))
+                return;
 
-            base.PlatformGraphics.DrawText(ft,
-                new Point(rect.X + (rect.Width - ft.Width) / 2, rect.Y + (rect.Height - ft.Height) / 2));
+            this.PlatformGraphics.DrawText(ft, new Point(x, y));
         }
 
         public ResourcePoolManager GetResourcePoolManager
