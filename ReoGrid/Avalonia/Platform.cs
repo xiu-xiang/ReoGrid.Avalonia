@@ -21,6 +21,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using System;
 #if !AVALONIA
 using System.Drawing;
@@ -59,7 +60,8 @@ namespace unvell.ReoGrid.Rendering
         {
             if(key == KeyCode.ControlKey)
             {
-                var ctrlOrCmd = TopLevel.GetTopLevel(target)!.PlatformSettings!.HotkeyConfiguration.CommandModifiers;
+                // Avalonia 12：PlatformSettings 改由 VisualExtensions.GetPlatformSettings 获取
+                var ctrlOrCmd = target.GetPlatformSettings()!.HotkeyConfiguration.CommandModifiers;
                 return inputKeyModifiers.HasFlag(ctrlOrCmd);
             }
             if (key == KeyCode.ShiftKey)
@@ -143,67 +145,27 @@ namespace unvell.ReoGrid.Rendering
 
 		internal static Graphics.Size MeasureText(IRenderer r, string text, string fontName, double fontSize, Drawing.Text.FontStyles style)
 		{
-			ResourcePoolManager resManager;
-            Typeface? typeface = null;
-
-			if (r == null)
-			{
-				if (resourcePoolManager == null) resourcePoolManager = new ResourcePoolManager();
-
-				resManager = resourcePoolManager;
-			}
-			else
-			{
-				resManager = r.ResourcePoolManager;
-			}
-
-			typeface = resManager.GetTypeface(fontName, FontWeight.Regular, ToAvaloniaFontStyle(style), FontStretch.Normal);
-
-			if (typeface == null)
+			// Avalonia 12：IGlyphTypeface / GlyphRun 构造变化较大，改用 FormattedText 测量
+			if (string.IsNullOrEmpty(text))
 			{
 				return Graphics.Size.Zero;
 			}
 
-			typeface = new Avalonia.Media.Typeface(
-						new Avalonia.Media.FontFamily(fontName),
-						PlatformUtility.ToAvaloniaFontStyle(style),
-						(style & FontStyles.Bold) == FontStyles.Bold ?
-						FontWeight.Bold : FontWeight.Normal,
-						FontStretch.Normal);
+			var typeface = new Typeface(
+				new FontFamily(fontName),
+				ToAvaloniaFontStyle(style),
+				(style & FontStyles.Bold) == FontStyles.Bold ? FontWeight.Bold : FontWeight.Normal,
+				FontStretch.Normal);
 
-			IGlyphTypeface glyphTypeface;
+			var ft = new FormattedText(
+				text,
+				CultureInfo.CurrentCulture,
+				FlowDirection.LeftToRight,
+				typeface,
+				fontSize * 1.33d,
+				Brushes.Black);
 
-            double width = 0;
-			double height = 0;
-			if (FontManager.Current.TryGetGlyphTypeface(typeface??Typeface.Default, out glyphTypeface))
-			{
-				//fontInfo.Ascent = typeface.FontFamily.Baseline;
-				//fontInfo.LineHeight = typeface.CapsHeight;
-
-				var size = fontSize * 1.33d;
-
-				var glyphIndexs = text.Select(ch => glyphTypeface.GetGlyph(ch)).ToArray() ;
-
-                GlyphRun run = new GlyphRun(glyphTypeface, size,text.AsMemory(), glyphIndexs);
-				width = run.Bounds.Size.Width;
-				height = run.Bounds.Size.Height * 1.33d;
-
-				//run.Bounds.Size;
-				//this.GlyphIndexes.Capacity = text.Length;
-
-				//for (int n = 0; n < text.Length; n++)
-				//{
-				//	ushort glyphIndex = glyphTypeface.GetGlyphs(text[n]);
-				//	//GlyphIndexes.Add(glyphIndex);
-
-				//	double width = glyphTypeface.GetGlyphAdvance(glyphIndex) * size;
-				//	//this.TextSizes.Add(width);
-
-				//	totalWidth += width;
-				//}
-			}
-
-			return new Graphics.Size(width, height);
+			return new Graphics.Size(ft.Width, ft.Height);
 		}
 
 		public static FontStyle ToAvaloniaFontStyle(unvell.ReoGrid.Drawing.Text.FontStyles textStyle)
