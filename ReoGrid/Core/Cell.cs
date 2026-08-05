@@ -289,7 +289,8 @@ namespace unvell.ReoGrid
 				cell.InnerDisplay = Convert.ToString(data);
 			}
 
-#if WPF
+#if WPF || AVALONIA
+			// Avalonia 与 WPF 一样：数据变更后必须丢弃旧 FormattedText，否则仍绘制旧显示（如 0.00）。
 			cell.formattedText = null;
 
 			//if (cell.FormattedText == null || cell.FormattedText.Text != cell.InnerDisplay)
@@ -1327,8 +1328,12 @@ namespace unvell.ReoGrid.Utility
 			//toCell.formulaStatus = fromCell.formulaStatus;
 #endif // FORMULA
 
-			// properties
-			toCell.FontDirty = fromCell.FontDirty;
+			// 内容已变，必须重测字体/文本；不可照搬源单元格的 FontDirty（源常为 false）。
+			toCell.FontDirty = true;
+#if WPF || AVALONIA
+			// 清除目标格旧绘制缓存，避免粘贴后仍显示原值（例如 0.88 被画成 0.00）。
+			toCell.formattedText = null;
+#endif
 			toCell.IsReadOnly = fromCell.IsReadOnly;
 
 			// custom content

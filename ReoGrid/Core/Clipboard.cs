@@ -35,6 +35,7 @@ using Clipboard = System.Windows.Clipboard;
 #elif AVALONIA
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 
 #endif // WINFORM
 
@@ -48,6 +49,68 @@ namespace unvell.ReoGrid
     partial class Worksheet
     {
         private static readonly string ClipBoardDataFormatIdentify = "{CB3BE3D1-2BF9-4fa6-9B35-374F6A0412CE}";
+
+#if AVALONIA
+        // Avalonia 12 剪贴板仅支持字节/字符串应用格式；PartialGrid 用进程内缓冲保留数值类型与格式
+        private static PartialGrid s_avaloniaClipboardPartialGrid;
+        private static string s_avaloniaClipboardText;
+        private static readonly Avalonia.Input.DataFormat<string> AvaloniaPartialGridMarkerFormat =
+            Avalonia.Input.DataFormat.CreateStringApplicationFormat("reogrid-partialgrid");
+
+        /// <summary>
+        /// 判断剪贴板内容是否仍对应本进程最近一次 Copy 的 PartialGrid。
+        /// </summary>
+        private static bool TryResolveAvaloniaPartialGrid(IClipboard clipboard, out PartialGrid grid, out string text)
+        {
+            grid = null;
+            text = null;
+            if (clipboard == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                text = clipboard.TryGetTextAsync().Result;
+            }
+            catch
+            {
+                text = null;
+            }
+
+            if (s_avaloniaClipboardPartialGrid == null)
+            {
+                return false;
+            }
+
+            // 优先：进程内 DataTransfer 仍带标记
+            try
+            {
+                using (var transfer = clipboard.TryGetInProcessDataAsync().Result)
+                {
+                    if (transfer != null && transfer.Formats.Contains(AvaloniaPartialGridMarkerFormat))
+                    {
+                        grid = s_avaloniaClipboardPartialGrid;
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                // 忽略，继续用文本指纹回退
+            }
+
+            // 回退：系统剪贴板常丢掉自定义格式；文本与复制时一致则仍用 PartialGrid（保留 0.88 等数值）
+            if (!string.IsNullOrEmpty(s_avaloniaClipboardText)
+                && string.Equals(text, s_avaloniaClipboardText, StringComparison.Ordinal))
+            {
+                grid = s_avaloniaClipboardPartialGrid;
+                return true;
+            }
+
+            return false;
+        }
+#endif
 
         private RangePosition currentCopingRange = RangePosition.Empty;
 
@@ -233,17 +296,26 @@ namespace unvell.ReoGrid
                     Clipboard.SetDataObject(data);
 #elif AVALONIA
                     var grid = GetPartialGrid(currentCopingRange, PartialGridCopyFlag.All, ExPartialGridCopyFlag.None, true);
-                    
-                    var data = new DataObject();
-                    data.Set(ClipBoardDataFormatIdentify, grid);
-
-                    //string text = StringifyRange(currentCopingRange);
-                    //if (!string.IsNullOrEmpty(text))
-                    //    data.Set(ClipBoardDataFormatIdentify, text);
+                    string text = StringifyRange(currentCopingRange);
+                    s_avaloniaClipboardPartialGrid = grid;
+                    s_avaloniaClipboardText = text ?? string.Empty;
 
                     var adapter = this.controlAdapter as ReoGridControl.ReoGridAvaloniaControlAdapter;
-                    var Clipboard = TopLevel.GetTopLevel(adapter.ControlInstance as Control)?.Clipboard;
-                    Clipboard.SetDataObjectAsync(data).Wait();
+                    var clipboard = TopLevel.GetTopLevel(adapter.ControlInstance as Control)?.Clipboard;
+                    if (clipboard != null)
+                    {
+                        // Avalonia 12：DataTransfer + 标记；数值本体放进程内缓冲
+                        var data = new DataTransfer();
+                        var markerItem = new DataTransferItem();
+                        markerItem.Set(AvaloniaPartialGridMarkerFormat, "1");
+                        if (!string.IsNullOrEmpty(text))
+                        {
+                            markerItem.SetText(text);
+                        }
+                        data.Add(markerItem);
+
+                        clipboard.SetDataAsync(data).Wait();
+                    }
 
 #endif // WINFORM || WPF
 
@@ -287,6 +359,15 @@ namespace unvell.ReoGrid
         /// </summary>
         public bool Paste()
         {
+            return Paste(PartialGridCopyFlag.All);
+        }
+
+        /// <summary>
+        /// Paste with selective flags (Excel 选择性粘贴).
+        /// </summary>
+        /// <param name="flag">Which parts of clipboard content to apply.</param>
+        public bool Paste(PartialGridCopyFlag flag)
+        {
             if (IsEditing)
             {
                 this.controlAdapter.EditControlPaste();
@@ -324,8 +405,22 @@ namespace unvell.ReoGrid
 #elif AVALONIA
                     var adapter = this.controlAdapter as ReoGridControl.ReoGridAvaloniaControlAdapter;
                     var clipboard = TopLevel.GetTopLevel(adapter.ControlInstance as Control)?.Clipboard;
-                    partialGrid = clipboard.GetDataAsync(ClipBoardDataFormatIdentify).Result as PartialGrid;
-                    //clipboardText = clipboard.GetDataAsync(ClipBoardDataFormatIdentify).Result as String;
+                    if (clipboard != null)
+                    {
+                        // 优先 PartialGrid（保留 double 等真实数值）；否则纯文本
+                        if (!TryResolveAvaloniaPartialGrid(clipboard, out partialGrid, out clipboardText)
+                            && string.IsNullOrEmpty(clipboardText))
+                        {
+                            try
+                            {
+                                clipboardText = clipboard.TryGetTextAsync().Result;
+                            }
+                            catch
+                            {
+                                clipboardText = null;
+                            }
+                        }
+                    }
 #elif ANDROID
 
 #endif // WINFORM || WPF
@@ -441,8 +536,9 @@ namespace unvell.ReoGrid
 
                         if (!cancelPerformPaste)
                         {
+                            // 选择性粘贴：按 flag 写入
                             DoAction(new SetPartialGridAction(new RangePosition(
-                                startRow, startCol, rows, cols), partialGrid));
+                                startRow, startCol, rows, cols), partialGrid, flag));
                         }
 
                         #endregion // Partial Grid Pasting
@@ -450,6 +546,14 @@ namespace unvell.ReoGrid
                     else if (!string.IsNullOrEmpty(clipboardText))
                     {
                         #region Plain Text Pasting
+                        // 纯文本仅含数值；仅格式/边框时无法粘贴
+                        if (flag != PartialGridCopyFlag.All
+                            && (flag & PartialGridCopyFlag.CellData) == 0
+                            && (flag & PartialGridCopyFlag.CellFormula) == 0)
+                        {
+                            return false;
+                        }
+
                         var arrayData = RGUtility.ParseTabbedString(clipboardText);
 
                         int rows = Math.Max(selectionRange.Rows, arrayData.GetLength(0));
@@ -564,7 +668,16 @@ namespace unvell.ReoGrid
 #if AVALONIA
                     var adapter = this.controlAdapter as ReoGridControl.ReoGridAvaloniaControlAdapter;
                     var clipboard = TopLevel.GetTopLevel(adapter.ControlInstance as Control)?.Clipboard;
-                    var partialGrid = clipboard.GetDataAsync(ClipBoardDataFormatIdentify).Result as PartialGrid;
+                    // Copy() 刚写入缓冲；剪切直接使用，避免 InProcess 查询失败导致 NRE
+                    PartialGrid partialGrid = s_avaloniaClipboardPartialGrid;
+                    if (partialGrid == null && clipboard != null)
+                    {
+                        TryResolveAvaloniaPartialGrid(clipboard, out partialGrid, out _);
+                    }
+                    if (partialGrid == null)
+                    {
+                        return false;
+                    }
 #else
 					DataObject data = Clipboard.GetDataObject() as DataObject;
 					PartialGrid partialGrid = data.GetData(ClipBoardDataFormatIdentify) as PartialGrid;

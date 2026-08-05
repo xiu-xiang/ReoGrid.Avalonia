@@ -863,8 +863,9 @@ namespace unvell.ReoGrid
 
 									UpdateCellBounds(cell);
 								}
-								else if (toCell.Rowspan == 1 && toCell.Colspan == 1)
+								else if (toCell.IsStartMergedCell || (toCell.Rowspan == 1 && toCell.Colspan == 1))
 								{
+									// 合并起始格粘贴后也要刷新字体缓存，否则仍显示目标格旧值。
 									UpdateCellFont(toCell);
 								}
 							}
@@ -1042,13 +1043,25 @@ namespace unvell.ReoGrid
 		/// <returns></returns>
 		public RangePosition SetPartialGridRepeatly(RangePosition range, PartialGrid grid)
 		{
+			return SetPartialGridRepeatly(range, grid, PartialGridCopyFlag.All);
+		}
+
+		/// <summary>
+		/// Repeat to copy from a separated grid to fit specified range (selective paste flags).
+		/// </summary>
+		/// <param name="range">Range to be copied</param>
+		/// <param name="grid">Partial grid to be copied</param>
+		/// <param name="flag">Which content parts to apply</param>
+		/// <returns>Applied range</returns>
+		public RangePosition SetPartialGridRepeatly(RangePosition range, PartialGrid grid, PartialGridCopyFlag flag)
+		{
 			if (grid.Rows <= 0 || grid.Columns <= 0) return RangePosition.Empty;
 
 			for (int r = range.Row; r <= range.EndRow; r += grid.Rows)
 			{
 				for (int c = range.Col; c <= range.EndCol; c += grid.Columns)
 				{
-					SetPartialGrid(new RangePosition(r, c, grid.Rows, grid.Columns), grid);
+					SetPartialGrid(new RangePosition(r, c, grid.Rows, grid.Columns), grid, flag, ExPartialGridCopyFlag.BorderOutsideOwner);
 				}
 			}
 
