@@ -388,21 +388,26 @@ namespace unvell.ReoGrid
 					// update cell font and text's bounds
 					UpdateCellFont(cell);
 				}
-				// when font is not changed but alignment is changed, only update the bounds of text
+				// when font is not changed but alignment/换行/缩进变化时，更新文字区域
 				else if (style.Flag.HasAny(PlainStyleFlag.HorizontalAlign
 					| PlainStyleFlag.VerticalAlign
-					| PlainStyleFlag.TextWrap
 					| PlainStyleFlag.Indent
 					| PlainStyleFlag.RotationAngle))
 				{
 					UpdateCellTextBounds(cell);
 				}
-#if WPF
+				else if (style.Flag.Has(PlainStyleFlag.TextWrap))
+				{
+					// 换行需重建测宽（MaxTextWidth），走完整字体更新更稳妥
+					UpdateCellFont(cell);
+				}
+#if WPF || AVALONIA
+				// Avalonia 与 WPF 均需刷新 FormattedText 前景色，否则仅改 Style 不重绘文字色
 				else if (style.Flag.Has(PlainStyleFlag.TextColor))
 				{
 					UpdateCellFont(cell, UpdateFontReason.TextColorChanged);
 				}
-#endif // WPF
+#endif // WPF || AVALONIA
 			}
 			//else
 			//{
@@ -860,6 +865,27 @@ namespace unvell.ReoGrid
 
 			oldSize = cell.TextBounds.Size;
 
+			Rectangle cellBounds = cell.Bounds;
+			RGFloat cellWidth = cellBounds.Width * scaleFactor;
+
+#if WPF || AVALONIA
+			// 必须在 Measure 之前设置 MaxTextWidth；NoWrap 须用 Infinity（Avalonia 下 0 会被当成行宽 0，文字消失）
+			if (cell.formattedText != null)
+			{
+				if (cell.InnerStyle.TextWrapMode != TextWrapMode.NoWrap)
+				{
+					cell.formattedText.MaxTextWidth = Math.Max(1, cellWidth - 4);
+#if AVALONIA
+					cell.formattedText.Trimming = Avalonia.Media.TextTrimming.None;
+#endif
+				}
+				else
+				{
+					cell.formattedText.MaxTextWidth = double.PositiveInfinity;
+				}
+			}
+#endif // WPF || AVALONIA
+
 			#region Plain Text Measure Size
 			size = ig.MeasureCellText(cell, drawMode, scaleFactor);
 
@@ -869,10 +895,6 @@ namespace unvell.ReoGrid
 			size.Width += 2;
 			size.Height += 1;
 			#endregion // Plain Text Measure Size
-
-			Rectangle cellBounds = cell.Bounds;
-
-			RGFloat cellWidth = cellBounds.Width * scaleFactor;
 
 #if WINFORM
 
@@ -895,14 +917,7 @@ namespace unvell.ReoGrid
 					if (size.Width < cellWidth - 1) size.Width = (float)(Math.Round(cellWidth - 1));
 				}
 
-#elif WPF
-
-			if (cell.InnerStyle.TextWrapMode != TextWrapMode.NoWrap)
-			{
-				cell.formattedText.MaxTextWidth = cellWidth;
-			}
-
-#endif // WPF
+#endif // WINFORM
 
 			#region Update Text Size Cache
 			RGFloat x = 0;
