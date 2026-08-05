@@ -261,6 +261,10 @@ namespace unvell.ReoGrid.Data
 				{
 					Rectangle bounds = GetColumnFilterButtonRect(headerSize);
 
+					// Linux/Skia：宽高非正则跳过绘制，避免 libSkiaSharp 段错误
+					if (bounds.Width < 1 || bounds.Height < 1)
+						return;
+
           SolidColor color1 = controlStyle.GetColHeadStartColor(isHover: false, isInvalid: false,
             isSelected: IsDropdown, isFullSelected: IsSelectAll != true);
 
@@ -273,18 +277,63 @@ namespace unvell.ReoGrid.Data
 
 					g.DrawRectangle(bounds, unvell.ReoGrid.Rendering.StaticResources.SystemColor_ControlDark);
 
+					var triSize = Math.Min(7 * dc.Worksheet.renderScaleFactor, 7.0);
+					var center = new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+
+#if AVALONIA
+					// Avalonia：用 Path 几何绘制，避免逐像素 DrawLine 在 Linux Skia 上崩溃
+					PaintFilterGlyph(g, center, triSize, IsSelectAll == true);
+#else
           if (IsSelectAll == true)
             Common.GraphicsToolkit.FillTriangle(dc.Graphics.PlatformGraphics,
-              Math.Min(7 * dc.Worksheet.renderScaleFactor, 7.0f),
-              new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2),
-              Common.GraphicsToolkit.TriangleDirection.Down);
+              triSize, center, Common.GraphicsToolkit.TriangleDirection.Down);
           else
             Common.GraphicsToolkit.FillTriangle(dc.Graphics.PlatformGraphics,
-              Math.Min(7 * dc.Worksheet.renderScaleFactor, 7.0f),
-              new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2),
-              Common.GraphicsToolkit.TriangleDirection.DownFilter);
+              triSize, center, Common.GraphicsToolkit.TriangleDirection.DownFilter);
+#endif
         }
 			}
+
+#if AVALONIA
+			/// <summary>
+			/// 绘制列头筛选箭头/漏斗（Avalonia 路径，规避 Skia 原生崩溃）。
+			/// </summary>
+			private static void PaintFilterGlyph(IGraphics g, Point center, double size, bool selectAll)
+			{
+				if (g == null || size < 2)
+					return;
+
+				if (selectAll)
+				{
+					// 向下实心三角
+					g.FillPolygon(SolidColor.Black,
+						new Point(center.X - size / 2, center.Y - size / 4),
+						new Point(center.X + size / 2, center.Y - size / 4),
+						new Point(center.X, center.Y + size / 4));
+				}
+				else
+				{
+					// 漏斗示意：上宽下窄 + 短颈
+					double topW = size;
+					double bottomW = Math.Max(1, size / 4);
+					double funnelH = size / 2;
+					double neckH = size / 2;
+					double left = center.X - topW / 2;
+					double top = center.Y - size / 2;
+					double neckLeft = left + (topW - bottomW) / 2;
+					double neckRight = left + (topW + bottomW) / 2;
+					double funnelBottom = top + funnelH;
+
+					g.DrawPolygon(SolidColor.Black, 1, LineStyles.Solid,
+						new Point(left, top),
+						new Point(left + topW, top),
+						new Point(neckRight, funnelBottom),
+						new Point(neckRight, funnelBottom + neckH),
+						new Point(neckLeft, funnelBottom + neckH),
+						new Point(neckLeft, funnelBottom));
+				}
+			}
+#endif
 
 			/// <summary>
 			/// Handling mouse-down process
@@ -340,8 +389,13 @@ namespace unvell.ReoGrid.Data
 
 				RGFloat scale = sheet.renderScaleFactor;
 
-				Rectangle bounds = new Rectangle(0, 0, Math.Min(Math.Min(size.Width - 2, 18f * scale), 20),
-					Math.Min(Math.Min(size.Height - 2, 18 * scale), 20));
+				// 钳制为正尺寸，防止窄列时 Width/Height 为负传入 Skia
+				RGFloat btnW = Math.Min(Math.Min(Math.Max(0, size.Width - 2), 18f * scale), 20);
+				RGFloat btnH = Math.Min(Math.Min(Math.Max(0, size.Height - 2), 18 * scale), 20);
+				if (btnW < 1 || btnH < 1)
+					return new Rectangle(0, 0, 0, 0);
+
+				Rectangle bounds = new Rectangle(0, 0, btnW, btnH);
 				bounds.X = size.Width - bounds.Width - 2;
 				bounds.Y = (size.Height - bounds.Height) / 2 - 1;
 
@@ -533,26 +587,44 @@ namespace unvell.ReoGrid.Data
 				if (this.ColumnHeader == null || this.ColumnHeader.Worksheet == null) return null;
 
 				List<string> items = new List<string>();
+				var worksheet = this.ColumnHeader.Worksheet;
+				int col = this.ColumnHeader.Index;
+				int startRow = Math.Max(0, this.autoFilter.ApplyRange.Row);
+				int endRow = Math.Max(worksheet.MaxContentRow, this.autoFilter.ApplyRange.EndRow);
+				endRow = Math.Min(endRow, worksheet.RowCount - 1);
 
-				int maxRow = this.ColumnHeader.Worksheet.MaxContentRow;
+				for (int r = startRow; r <= endRow; r++)
+				{
+					var cell = worksheet.Cells[r, col];
+					if (cell != null && !cell.IsValidCell) continue;
 
-				this.ColumnHeader.Worksheet.IterateCells(this.autoFilter.ApplyRange.Row,
-					this.ColumnHeader.Index, this.autoFilter.ApplyRange.Rows, 1, true,
-					(r, c, cell) =>
-          {
-            var str = cell == null ? string.Empty : cell.DisplayText;
-            if (string.IsNullOrEmpty(str)) str = LanguageResource.Filter_Blanks;
-
-						if (!items.Contains(str))
+					string str = cell == null ? string.Empty : cell.DisplayText;
+					if (string.IsNullOrEmpty(str) && cell?.Data != null)
+						str = Convert.ToString(cell.Data);
+					if (string.IsNullOrEmpty(str))
+					{
+						// 仅当同行其它列有内容时才加入「(空白)」，避免尾部空行
+						bool hasOther = false;
+						int c0 = this.autoFilter.ApplyRange.Col;
+						int c1 = this.autoFilter.ApplyRange.EndCol;
+						for (int oc = c0; oc <= c1 && !hasOther; oc++)
 						{
-							items.Add(str);
+							if (oc == col) continue;
+							var ocCell = worksheet.Cells[r, oc];
+							if (ocCell == null || !ocCell.IsValidCell) continue;
+							if (!string.IsNullOrEmpty(ocCell.DisplayText)
+							    || (ocCell.Data != null && !string.IsNullOrEmpty(Convert.ToString(ocCell.Data))))
+								hasOther = true;
 						}
+						if (!hasOther) continue;
+						str = LanguageResource.Filter_Blanks;
+					}
 
-						return true;
-					});
+					if (!items.Contains(str))
+						items.Add(str);
+				}
 
 				items.Sort();
-
 				return items;
 			}
 

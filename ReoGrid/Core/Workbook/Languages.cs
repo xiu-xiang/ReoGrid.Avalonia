@@ -76,45 +76,45 @@ namespace unvell.ReoGrid
 		/// <summary>
 		/// Text displayed on column filter. (Sort A to Z)
 		/// </summary>
-		public static string Filter_SortAtoZ = "Sort A to Z";
+		public static string Filter_SortAtoZ = "从 A 到 Z 排序";
 
 		/// <summary>
 		/// Text displayed on column filter (Sort Z to A)
 		/// </summary>
-		public static string Filter_SortZtoA = "Sort Z to A";
+		public static string Filter_SortZtoA = "从 Z 到 A 排序";
 		/// <summary>
 		/// Text displayed on column filter (Select All)
 		/// </summary>
-		public static string Filter_SelectAll = "(Select All)";
+		public static string Filter_SelectAll = "(全选)";
 		/// <summary>
-		/// Text of blank option in filter list. (Blanks)
+		/// 筛选列表中的空白项显示文本
 		/// </summary>
-		public static string Filter_Blanks = "(Blanks)";
+		public static string Filter_Blanks = "(空白)";
 		#endregion // Filter
 
 		#region Sheet Menu
 		/// <summary>
 		/// Text displayed on sheet tab control (Insert)
 		/// </summary>
-		public static string Menu_InsertSheet = "Insert";
+		public static string Menu_InsertSheet = "插入";
 		/// <summary>
 		/// Text displayed on sheet tab control (Delete)
 		/// </summary>
-		public static string Menu_DeleteSheet = "Delete";
+		public static string Menu_DeleteSheet = "删除";
 		/// <summary>
 		/// Text displayed on sheet tab control (Rename...)
 		/// </summary>
-		public static string Menu_RenameSheet = "Rename...";
+		public static string Menu_RenameSheet = "重命名...";
 		#endregion // Sheet Menu
 
 		/// <summary>
 		/// Text displayed on sheet renaming dialog (Rename sheet)
 		/// </summary>
-		public static string Sheet_RenameDialog_Title = "Rename sheet";
+		public static string Sheet_RenameDialog_Title = "重命名工作表";
 		/// <summary>
 		/// Label text displayed on sheet renaming dialog (Name: )
 		/// </summary>
-		public static string Sheet_RenameDialog_NameLabel = "&Name: ";
+		public static string Sheet_RenameDialog_NameLabel = "名称(&N)：";
 
 		/// <summary>
 		/// Common text displayed as label of OK button (OK)
