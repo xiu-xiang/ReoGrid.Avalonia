@@ -1264,8 +1264,13 @@ namespace unvell.ReoGrid
 						if (c == cell.MergeStartPos.Col)
 						{
 							Cell startCell = GetCell(cell.MergeStartPos);
-							startCell.Rowspan += (short)count;
-							startCell.Height += totalHeight;
+							if (startCell != null)
+							{
+								startCell.Rowspan += (short)count;
+								// 禁止只改 Height：完整重算 Bounds/文字，避免脏裁剪矩形触发 Linux Skia 崩溃
+								startCell.FontDirty = true;
+								UpdateCellBounds(startCell);
+							}
 						}
 					}
 					else
@@ -1547,7 +1552,7 @@ namespace unvell.ReoGrid
 							cells[r, c].MergeEndPos = cells[r, c].MergeEndPos.Offset(0, count);
 						}
 
-						// if range is splitted by inserted rows
+						// if range is splitted by inserted columns
 						// the width of range should be expanded
 						//
 						// NOTE: only do this once by making sure r is merge-start-row
@@ -1555,8 +1560,13 @@ namespace unvell.ReoGrid
 						if (r == cell.MergeStartPos.Row)
 						{
 							Cell startCell = GetCell(cell.MergeStartPos);
-							startCell.Colspan += (short)count;
-							startCell.Width += totalWidth;
+							if (startCell != null)
+							{
+								startCell.Colspan += (short)count;
+								// 禁止只改 Width：完整重算 Bounds/文字，避免脏裁剪矩形触发 Linux Skia 崩溃
+								startCell.FontDirty = true;
+								UpdateCellBounds(startCell);
+							}
 						}
 					}
 					else

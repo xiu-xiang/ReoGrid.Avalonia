@@ -92,7 +92,8 @@ namespace unvell.ReoGrid.Rendering
 #if AVALONIA
             static RGPen CreatePen(Avalonia.Media.IBrush color, double thickness, RGDashStyle dashStyle)
             {
-                return new RGPen(color, 1)
+                // 使用传入的 thickness，避免粗边框模板厚度恒为 1
+                return new RGPen(color, Math.Max(1, thickness))
                 {
                     DashStyle = dashStyle
                 };
@@ -360,9 +361,14 @@ namespace unvell.ReoGrid.Rendering
 #elif AVALONIA
             // get template pen from cache list
             var tp = pens[(byte)style];
+            if (tp == null || g == null)
+                return;
+            if (double.IsNaN(x) || double.IsNaN(y) || double.IsNaN(x2) || double.IsNaN(y2)
+                || double.IsInfinity(x) || double.IsInfinity(y) || double.IsInfinity(x2) || double.IsInfinity(y2))
+                return;
 
-            // create new WPF pen
-            var p = new RGPen(new RGSolidBrush(color), tp.Thickness);
+            // create new Avalonia pen from template
+            var p = new RGPen(new RGSolidBrush(color), Math.Max(1, tp.Thickness));
             // copy the pen style from template
             p.DashStyle = tp.DashStyle;
             p.LineCap = Avalonia.Media.PenLineCap.Square;            
