@@ -144,6 +144,9 @@ namespace unvell.ReoGrid
 			startCell.Rowspan = (short)fixedRange.Rows;
 			startCell.Colspan = (short)fixedRange.Cols;
 
+			// 合并后尺寸变化，强制重建文字布局，避免旧 MaxTextWidth/TextBounds 参与绘制
+			startCell.FontDirty = true;
+
 			// update content bounds
 			UpdateCellBounds(startCell);
 

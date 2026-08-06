@@ -212,10 +212,11 @@ namespace unvell.ReoGrid.Views
                             )
                         {
                             var mergedStartCell = sheet.GetCell(cell.MergeStartPos);
-
-                            if (!string.IsNullOrEmpty(mergedStartCell.DisplayText) || mergedStartCell.body != null)
+                            // 插入行列后 MergeStart 可能短暂无效，避免空引用后进入异常绘制路径
+                            if (mergedStartCell != null
+                                && (!string.IsNullOrEmpty(mergedStartCell.DisplayText) || mergedStartCell.body != null))
                             {
-                                DrawCell(dc, sheet.GetCell(cell.MergeStartPos));
+                                DrawCell(dc, mergedStartCell);
                             }
                             c = cell.MergeEndPos.Col + 1;
                         }
@@ -231,7 +232,7 @@ namespace unvell.ReoGrid.Views
                         {
                             var mergedStartCell = sheet.GetCell(cell.MergeStartPos);
 
-                            if (!drawedCells.Contains(mergedStartCell))
+                            if (mergedStartCell != null && !drawedCells.Contains(mergedStartCell))
                             {
                                 if (!string.IsNullOrEmpty(mergedStartCell.DisplayText) || mergedStartCell.body != null)
                                 {
@@ -846,7 +847,8 @@ namespace unvell.ReoGrid.Views
                 #region Determine clip region
 
                 RGFloat cellScaledWidth = cell.Width * this.scaleFactor;
-                RGFloat cellScaledHeight = (float)Math.Floor(cell.Height * this.scaleFactor) - 1;
+                // Floor-1 在矮行/缩放时会变成 0 或负值；合并格必走裁剪，非法高度会触发 Linux Skia 崩溃
+                RGFloat cellScaledHeight = Math.Max(0, Math.Floor(cell.Height * this.scaleFactor) - 1);
 
                 Rectangle clipRect = new Rectangle(this.ScrollViewLeft * this.scaleFactor, cell.Top * this.scaleFactor, this.Width, cellScaledHeight);
 
@@ -891,6 +893,12 @@ namespace unvell.ReoGrid.Views
                 else
                 {
                     needWidthClip = cell.TextBoundsHeight > cellScaledHeight;
+                }
+
+                // 宽高非正时跳过裁剪（仍绘制文字），避免 PushClip(空/负矩形)
+                if (needWidthClip && (clipRect.Width <= 0 || clipRect.Height <= 0))
+                {
+                    needWidthClip = false;
                 }
 
                 if (needWidthClip)
@@ -1039,6 +1047,11 @@ namespace unvell.ReoGrid.Views
         public override bool OnMouseDown(Point location, MouseButtons buttons)
         {
             bool isProcessed = false;
+
+#if DRAWING
+			// 点在单元格区域时取消浮动图表/形状选中
+			this.sheet.drawingCanvas?.ClearFloatingSelection();
+#endif // DRAWING
 
             if (!isProcessed
                 && sheet.selectionMode != WorksheetSelectionMode.None
@@ -1261,7 +1274,8 @@ namespace unvell.ReoGrid.Views
 
                             if (buttons == MouseButtons.Right)
                             {
-                                sheet.controlAdapter.ShowContextMenuStrip(ViewTypes.None, PointToController(location));
+                                // 显式传 Cells，避免与行列头菜单混淆
+                                sheet.controlAdapter.ShowContextMenuStrip(ViewTypes.Cells, PointToController(location));
                             }
 
                             // block other processes
