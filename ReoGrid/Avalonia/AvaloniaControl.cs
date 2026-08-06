@@ -35,6 +35,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using System;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using unvell.ReoGrid.AvaloniaPlatform;
 using unvell.ReoGrid.Graphics;
 using unvell.ReoGrid.Interaction;
@@ -42,6 +43,7 @@ using unvell.ReoGrid.Main;
 using unvell.ReoGrid.Rendering;
 using unvell.ReoGrid.Views;
 using HorizontalAlignment = Avalonia.Layout.HorizontalAlignment;
+using Orientation = Avalonia.Layout.Orientation;
 using Point = unvell.ReoGrid.Graphics.Point;
 
 namespace unvell.ReoGrid
@@ -198,8 +200,148 @@ namespace unvell.ReoGrid
             PointerMoved += OnMouseMove;
             PointerWheelChanged += OnMouseWheel;
 
+            // Sheet 标签右键：插入 / 删除工作表
+            this.sheetTab.TabMouseDown += SheetTab_TabMouseDown;
         }
 
+        /// <summary>底部 Sheet 标签右键弹出菜单。</summary>
+        private void SheetTab_TabMouseDown(object sender, SheetTabMouseEventArgs e)
+        {
+            if ((e.MouseButtons & MouseButtons.Right) == 0)
+                return;
+
+            // 不设 Handled，让标签先完成选中，再延后打开菜单避免被 PointerPressed 立刻关掉
+            int index = e.Index;
+            Dispatcher.UIThread.Post(() => ShowSheetTabContextMenu(index), DispatcherPriority.Input);
+        }
+
+        /// <summary>显示 Sheet 标签上下文菜单（插入 / 删除）。</summary>
+        private void ShowSheetTabContextMenu(int index)
+        {
+            if (index < 0 || index >= this.Worksheets.Count)
+                return;
+
+            var menu = new ContextMenu();
+
+            var insertItem = new MenuItem { Header = LanguageResource.Menu_InsertSheet };
+            insertItem.Click += (_, _) =>
+            {
+                var sheet = this.NewWorksheet();
+                this.CurrentWorksheet = sheet;
+            };
+
+            var deleteItem = new MenuItem
+            {
+                Header = LanguageResource.Menu_DeleteSheet,
+                // 至少保留一张工作表
+                IsEnabled = this.Worksheets.Count > 1,
+            };
+            deleteItem.Click += async (_, _) =>
+            {
+                await TryDeleteWorksheetFromTabAsync(index);
+            };
+
+            menu.Items.Add(insertItem);
+            menu.Items.Add(deleteItem);
+
+            if (!menu.IsOpen)
+                menu.Open(this.sheetTab);
+        }
+
+        /// <summary>确认后删除指定索引的工作表。</summary>
+        private async Task TryDeleteWorksheetFromTabAsync(int index)
+        {
+            if (index < 0 || index >= this.Worksheets.Count)
+                return;
+            if (this.Worksheets.Count <= 1)
+                return;
+
+            var sheet = this.Worksheets[index];
+            if (!await ConfirmDeleteWorksheetAsync(sheet.Name))
+                return;
+
+            try
+            {
+                this.RemoveWorksheet(index);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("RemoveWorksheet failed: " + ex);
+            }
+        }
+
+        /// <summary>删除工作表前的确认对话框（不依赖业务层 MsgBox）。</summary>
+        private async Task<bool> ConfirmDeleteWorksheetAsync(string sheetName)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            var decided = false;
+            var yesBtn = new Button
+            {
+                Content = LanguageResource.Menu_DeleteSheet,
+                MinWidth = 72,
+                Padding = new Thickness(12, 4),
+            };
+            var noBtn = new Button
+            {
+                Content = "取消",
+                MinWidth = 72,
+                Padding = new Thickness(12, 4),
+            };
+
+            var dlg = new Window
+            {
+                Title = "删除工作表",
+                Width = 380,
+                Height = 150,
+                CanResize = false,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Content = new StackPanel
+                {
+                    Margin = new Thickness(16),
+                    Spacing = 16,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = $"确定删除工作表「{sheetName}」吗？删除后无法撤销。",
+                            TextWrapping = TextWrapping.Wrap,
+                        },
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            HorizontalAlignment = HorizontalAlignment.Right,
+                            Spacing = 8,
+                            Children = { yesBtn, noBtn },
+                        },
+                    },
+                },
+            };
+
+            yesBtn.Click += (_, _) =>
+            {
+                decided = true;
+                tcs.TrySetResult(true);
+                dlg.Close();
+            };
+            noBtn.Click += (_, _) =>
+            {
+                decided = true;
+                tcs.TrySetResult(false);
+                dlg.Close();
+            };
+            dlg.Closed += (_, _) =>
+            {
+                if (!decided)
+                    tcs.TrySetResult(false);
+            };
+
+            if (TopLevel.GetTopLevel(this) is Window owner)
+                await dlg.ShowDialog(owner);
+            else
+                dlg.Show();
+
+            return await tcs.Task;
+        }
 
         private void MouseUpHandler(object sender, PointerReleasedEventArgs e)
         {
@@ -587,25 +729,53 @@ namespace unvell.ReoGrid
 
             public void ShowContextMenuStrip(ViewTypes viewType, Graphics.Point containerLocation)
             {
-                switch (viewType)
+                // 勿写入 Control.ContextMenu：Avalonia 会在下次右键自动弹出上次赋的菜单，
+                // 导致单元格与行列头菜单错位（先右键表头再右键单元格仍显示表头菜单）。
+                ContextMenu? menu = ResolveContextMenu(viewType);
+                CloseOpenContextMenus(except: menu);
+
+                // 清除可能残留的 Control.ContextMenu，避免原生 ContextRequested 弹出旧菜单
+                this.canvas.BaseContextMenu = null;
+
+                if (menu == null)
+                    return;
+
+                // 右键在 MouseDown 中触发：延后 Open，避免按下阶段立刻关闭
+                var target = this.canvas;
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
-                    default:
-                    case ViewTypes.Cells:
-                        this.canvas.BaseContextMenu = this.canvas.CellsContextMenu;
-                        break;
+                    if (!menu.IsOpen)
+                        menu.Open(target);
+                }, Avalonia.Threading.DispatcherPriority.Input);
+            }
 
-                    case ViewTypes.ColumnHeader:
-                        this.canvas.BaseContextMenu = this.canvas.ColumnHeaderContextMenu;
-                        break;
+            /// <summary>按命中区域选择对应右键菜单（None 按单元格处理）。</summary>
+            private ContextMenu? ResolveContextMenu(ViewTypes viewType)
+            {
+                if (viewType == ViewTypes.ColumnHeader)
+                    return this.canvas.ColumnHeaderContextMenu;
+                if (viewType == ViewTypes.RowHeader)
+                    return this.canvas.RowHeaderContextMenu;
+                if (viewType == ViewTypes.LeadHeader)
+                    return this.canvas.LeadHeaderContextMenu;
+                // Cells / None / 其它 → 单元格菜单
+                return this.canvas.CellsContextMenu;
+            }
 
-                    case ViewTypes.RowHeader:
-                        this.canvas.BaseContextMenu = this.canvas.RowHeaderContextMenu;
-                        break;
+            /// <summary>关闭其它已打开的右键菜单，避免残留菜单遮挡或错绑。</summary>
+            private void CloseOpenContextMenus(ContextMenu? except)
+            {
+                CloseIfOpen(this.canvas.CellsContextMenu, except);
+                CloseIfOpen(this.canvas.RowHeaderContextMenu, except);
+                CloseIfOpen(this.canvas.ColumnHeaderContextMenu, except);
+                CloseIfOpen(this.canvas.LeadHeaderContextMenu, except);
+            }
 
-                    case ViewTypes.LeadHeader:
-                        this.canvas.BaseContextMenu = this.canvas.LeadHeaderContextMenu;
-                        break;
-                }
+            private static void CloseIfOpen(ContextMenu? menu, ContextMenu? except)
+            {
+                if (menu == null || ReferenceEquals(menu, except) || !menu.IsOpen)
+                    return;
+                menu.Close();
             }
 
             private Cursor oldCursor = null;
@@ -1017,7 +1187,8 @@ namespace unvell.ReoGrid
 
             }
 
-            protected override void OnLostFocus(RoutedEventArgs e)
+            // Avalonia 12：LostFocus 参数由 RoutedEventArgs 改为 FocusChangedEventArgs
+            protected override void OnLostFocus(FocusChangedEventArgs e)
             {
                 var sheet = this.Owner.CurrentWorksheet;
 
