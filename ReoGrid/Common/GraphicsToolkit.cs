@@ -134,6 +134,9 @@ namespace unvell.Common
 
         public static void FillTriangle(PlatformGraphics g, RGFloat size, Point loc, TriangleDirection dir = TriangleDirection.Down)
         {
+            // 空画布或过小尺寸时跳过，避免 Linux Skia 非法绘制
+            if (g == null || size < 2)
+                return;
 
 #if WINFORM
             var p = System.Drawing.Pens.Black;
@@ -196,7 +199,7 @@ namespace unvell.Common
           int funnelHeight = (int)(size / 2);
           int neckHeight = (int)(size / 2 + 1); // Extended funnel neck
 
-#if WINFORM || WPF
+#if WINFORM || WPF || AVALONIA
           // Draw four side lines of the funnel to create a hollow effect
           // Top left to bottom left
           g.DrawLine(p, new Point(loc.X, loc.Y), new Point(loc.X + (topWidth - bottomWidth) / 2, loc.Y + funnelHeight));
@@ -228,6 +231,9 @@ namespace unvell.Common
           g.DrawRectangle(RGBrushes.Black, p, new Rectangle(dotPosition.X, dotPosition.Y, 1, 1));
 #elif WINFORM
           g.DrawRectangle(p, dotPosition.X, dotPosition.Y, 1, 1);
+#elif AVALONIA
+          // Avalonia：用短线代替 1x1 矩形，避免零面积 DrawRectangle
+          g.DrawLine(p, new Point(dotPosition.X, dotPosition.Y), new Point(dotPosition.X + 1, dotPosition.Y));
 #elif ANDROID        
 
 #endif
