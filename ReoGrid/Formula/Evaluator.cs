@@ -66,6 +66,10 @@ namespace unvell.ReoGrid.Formula
 						var sheet = cellNode.Worksheet;
 						if (sheet == null && cell != null) sheet = cell.Worksheet;
 
+						// 跨表名（如「本地5」）找不到工作表时勿空引用；按空单元格处理。
+						if (sheet == null)
+							return FormulaValue.Nil;
+
 						var pos = cellNode.Position;
 						var targetCell = sheet.GetCell(pos);
 
@@ -111,25 +115,34 @@ namespace unvell.ReoGrid.Formula
 				case STNodeType.IDENTIFIER:
 					#region Identifier
 					{
-						string name = ((STIdentifierNode)node).Identifier;
+						var idNode = (STIdentifierNode)node;
+						string name = idNode.Identifier;
 
-						if (cell.Worksheet.TryGetNamedRange(name, out var range))
+						// 优先使用跨表节点上的工作表；缺失时回退当前单元格所在表。
+						var sheet = idNode.Worksheet;
+						if (sheet == null && cell != null) sheet = cell.Worksheet;
+						if (sheet == null)
+							return FormulaValue.Nil;
+
+						if (sheet.TryGetNamedRange(name, out var range))
 						{
 							if (range.Position.IsSingleCell)
 							{
-								return CreateFormulaValue(cell.Worksheet.GetCellData(range.StartPos));
+								return CreateFormulaValue(sheet.GetCellData(range.StartPos));
 							}
 							else
 							{
 								return range.Position;
 							}
 						}
-						else if (FormulaExtension.NameReferenceProvider != null)
+						else if (FormulaExtension.NameReferenceProvider != null && cell != null)
 						{
 							return CreateFormulaValue(FormulaExtension.NameReferenceProvider(cell, name));
 						}
 						else
 						{
+							if (cell == null)
+								return FormulaValue.Nil;
 							throw new FormulaNoNameException(cell);
 							//return FormulaValue._NoName;
 						}

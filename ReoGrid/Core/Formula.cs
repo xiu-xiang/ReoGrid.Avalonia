@@ -206,6 +206,10 @@ namespace unvell.ReoGrid
 					worksheet = cellNode.Worksheet;
 					if (worksheet == null) worksheet = cell.Worksheet;
 
+					// 跨表引用目标工作表不存在时跳过引用登记，避免 NRE。
+					if (worksheet == null)
+						break;
+
 					if (checkSelfRefer && pos.Equals(cell.Position) && worksheet == cell.Worksheet)
 					{
 						throw new CircularReferenceException();
@@ -226,6 +230,9 @@ namespace unvell.ReoGrid
 					worksheet = rangeNode.Worksheet;
 					if (worksheet == null) worksheet = cell.Worksheet;
 
+					if (worksheet == null)
+						break;
+
 					rangePos = worksheet.FixRange(rangeNode.Range);
 
 					if (checkSelfRefer && rangePos.Contains(cell.Position) && worksheet == cell.Worksheet)
@@ -241,6 +248,9 @@ namespace unvell.ReoGrid
 
 					worksheet = idNode.Worksheet;
 					if (worksheet == null) worksheet = cell.Worksheet;
+
+					if (worksheet == null)
+						break;
 
 					if (worksheet.TryGetNamedRange(idNode.Identifier, out range))
 					{

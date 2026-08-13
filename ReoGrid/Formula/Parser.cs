@@ -320,9 +320,11 @@ namespace unvell.ReoGrid.Formula
 			{
 				var id = ReadPrimary(lexer);
 
-				if (id.Type != STNodeType.CELL
-					&& id.Type != STNodeType.RANGE
-					&& id.Type != STNodeType.IDENTIFIER)
+				// 修复：`本地5!` 等残缺跨表引用时 ReadPrimary 可能返回 null，原代码直接访问 id.Type 抛 NRE。
+				if (id == null
+					|| (id.Type != STNodeType.CELL
+						&& id.Type != STNodeType.RANGE
+						&& id.Type != STNodeType.IDENTIFIER))
 				{
 					throw CreateException(lexer, "expect Cell/Range/Name reference");
 				}
@@ -371,7 +373,8 @@ namespace unvell.ReoGrid.Formula
 			{
 				var id = ReadPrimary(lexer);
 
-				if (id.Type != STNodeType.IDENTIFIER)
+				// 修复：点号后标识符缺失时防空。
+				if (id == null || id.Type != STNodeType.IDENTIFIER)
 				{
 					throw CreateException(lexer, "expect identifier");
 				}
@@ -388,7 +391,8 @@ namespace unvell.ReoGrid.Formula
 		{
 			STNode node;
 
-			if (CommitMatchNode(lexer, "string", STNodeType.STRING, out node)
+			if (CommitMatchQuotedSheetAsIdentifier(lexer, out node)
+				|| CommitMatchNode(lexer, "string", STNodeType.STRING, out node)
 				|| CommitMatchNode(lexer, "identifier", STNodeType.IDENTIFIER, out node)
 				|| CommitMatchNode(lexer, "number", STNodeType.NUMBER, out node)
 				|| CommitMatchNode(lexer, "cell", STNodeType.CELL, out node)
@@ -434,6 +438,33 @@ namespace unvell.ReoGrid.Formula
 		}
 
 		#region Commit & STNode Constructions
+		/// <summary>
+		/// 将 Excel 单引号工作表名（如 '本地5'）提交为 IDENTIFIER，供跨表 `!` 解析。
+		/// </summary>
+		private static bool CommitMatchQuotedSheetAsIdentifier(ExcelFormulaLexer lexer, out STNode node)
+		{
+			if (!lexer.IsMatch("qsheet"))
+			{
+				node = null;
+				return false;
+			}
+
+			var g = lexer.CurrentToken.Groups["qsheet"];
+			string raw = g.Value;
+			// 去掉两侧单引号，并把 '' 还原为 '
+			string sheetName = raw.Length >= 2
+				? raw.Substring(1, raw.Length - 2).Replace("''", "'")
+				: raw;
+
+			lexer.NextToken();
+			node = new STIdentifierNode(
+				lexer.Cell == null ? null : lexer.Cell.Worksheet,
+				sheetName,
+				g.Index,
+				g.Length);
+			return true;
+		}
+
 		private static bool CommitMatchNode(ExcelFormulaLexer lexer, string groupName, STNodeType type, out STNode node)
 		{
 			if (lexer.IsMatch(groupName))
@@ -513,7 +544,10 @@ namespace unvell.ReoGrid.Formula
 		public Cell Cell { get; set; }
 
 		private static readonly Regex TokenRegex = new Regex(
-			"\\s*((?<string>\"(?:\"\"|[^\"])*\")|(?<union_ranges>[A-Z]+[0-9]+:[A-Z]+[0-9]+(\\s[A-Z]+[0-9]+:[A-Z]+[0-9]+)+)"
+			"\\s*((?<string>\"(?:\"\"|[^\"])*\")"
+			// Excel 跨表常用单引号工作表名：'本地5'!A1
+			+ "|(?<qsheet>'(?:''|[^'])*')"
+			+ "|(?<union_ranges>[A-Z]+[0-9]+:[A-Z]+[0-9]+(\\s[A-Z]+[0-9]+:[A-Z]+[0-9]+)+)"
 			+ "|(?<range>\\$?[A-Z]+\\$?[0-9]*:\\$?[A-Z]+\\$?[0-9]*)"
 			+ "|(?<cell>\\$?[A-Z]+\\$?[0-9]+)"
 			+ "|(?<token>-)|(?<number>\\-?\\d*\\" + FormulaExtension.NumberDecimalSeparator + "?\\d+)"

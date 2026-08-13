@@ -880,7 +880,19 @@ namespace unvell.ReoGrid
 		/// <param name="ex">Exception to describe the details of error information</param>
 		public void NotifyExceptionHappen(Worksheet sheet, Exception ex)
 		{
-			Logger.Log("workbook", "internal exception: " + ex.Message);
+			// 附带类型与堆栈首帧，便于定位公式解析/求值空引用（如跨表「本地5!…」）。
+			string sheetHint = sheet != null ? sheet.Name : "(null-sheet)";
+			Logger.Log("workbook", "internal exception [{0}] on sheet [{1}]: {2}",
+				ex != null ? ex.GetType().Name : "null",
+				sheetHint,
+				ex != null ? ex.Message : string.Empty);
+			if (ex != null && !string.IsNullOrEmpty(ex.StackTrace))
+			{
+				string firstFrame = ex.StackTrace.Split(new[] { '\r', '\n' },
+					StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+				if (!string.IsNullOrEmpty(firstFrame))
+					Logger.Log("workbook", "  at {0}", firstFrame.Trim());
+			}
 
 			if (this.ExceptionHappened != null)
 			{
