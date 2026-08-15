@@ -57,14 +57,15 @@ namespace unvell.ReoGrid.Chart
 		{
 			this.Title = "Chart";
 
-			// border line color
+			// 不透明白底 + 银色边框，避免浮动图表透出工作表网格
+			this.FillColor = SolidColor.White;
 			this.LineColor = SolidColor.Silver;
 			this.Padding = new PaddingValue(10);
 
-			// body
+			// body（绘图区画实心白底，避免子视图 Transparent 透出单元格）
 			this.Children.Add(this.PlotViewContainer = new DrawingComponent()
 			{
-				FillColor = SolidColor.Transparent,
+				FillColor = SolidColor.White,
 				LineColor = SolidColor.Transparent,
 			});
 
@@ -232,6 +233,12 @@ namespace unvell.ReoGrid.Chart
 			if (this.layoutDirty)
 			{
 				this.UpdateLayout();
+			}
+
+			// 强制底板不透明（即使 Style/Excel 将 FillColor 设为 Transparent 也不透网格）
+			if (this.Width > 0 && this.Height > 0)
+			{
+				dc.Graphics.FillRectangle(new Rectangle(0, 0, this.Width, this.Height), SolidColor.White);
 			}
 
 			base.OnPaint(dc);

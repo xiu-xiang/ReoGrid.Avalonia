@@ -23,6 +23,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
+using unvell.ReoGrid.Graphics;
+using unvell.ReoGrid.Interaction;
 using unvell.ReoGrid.Rendering;
 using unvell.ReoGrid.Views;
 
@@ -44,6 +46,12 @@ namespace unvell.ReoGrid.Drawing
 	internal class WorksheetDrawingCanvas : DrawingCanvas
 	{
 		internal Worksheet Worksheet { get; set; }
+
+		/// <summary>当前正在拖拽的顶层浮动对象（图表/形状等）。</summary>
+		private DrawingObject draggingObject;
+		private Point dragMouseStart;
+		private Point dragObjectStart;
+		private bool isDragging;
 
 		public WorksheetDrawingCanvas(Worksheet sheet)
 		{
@@ -90,6 +98,111 @@ namespace unvell.ReoGrid.Drawing
 		{
 			this.Children.Clear();
 		}
+
+		/// <summary>取消全部浮动对象选中并结束拖拽（点击单元格时调用）。</summary>
+		internal void ClearFloatingSelection()
+		{
+			bool changed = this.isDragging;
+			this.isDragging = false;
+			this.draggingObject = null;
+
+			var children = this.Children;
+			if (children != null)
+			{
+				foreach (var child in children)
+				{
+					if (child is SelectableFloatingObject selectable && selectable.IsSelected)
+					{
+						selectable.IsSelected = false;
+						changed = true;
+					}
+				}
+			}
+
+			if (changed)
+				this.Invalidate();
+		}
+
+		#region 浮动对象选中与拖拽
+		public override bool OnMouseDown(Point location, MouseButtons button)
+		{
+			if (button != MouseButtons.Left)
+				return base.OnMouseDown(location, button);
+
+			var children = this.Children;
+			if (children == null || children.Count <= 0)
+				return false;
+
+			// 自上而下命中顶层浮动对象（图表等），不深入子控件以免拦截整体拖动
+			for (int i = children.Count - 1; i >= 0; i--)
+			{
+				if (children[i] is not DrawingObject obj || !obj.Visible)
+					continue;
+				if (!obj.Bounds.Contains(location))
+					continue;
+
+				// 单选：清除其余对象选中状态
+				foreach (var child in children)
+				{
+					if (child is SelectableFloatingObject selectable && !ReferenceEquals(selectable, obj))
+						selectable.IsSelected = false;
+				}
+
+				obj.IsSelected = true;
+				this.draggingObject = obj;
+				this.dragMouseStart = location;
+				this.dragObjectStart = obj.Location;
+				this.isDragging = true;
+
+				// 通知对象自身（相对坐标），便于外部订阅 MouseDown
+				obj.OnMouseDown(new Point(location.X - obj.X, location.Y - obj.Y), button);
+				this.Invalidate();
+				return true;
+			}
+
+			// 点在空白处：取消全部选中
+			foreach (var child in children)
+			{
+				if (child is SelectableFloatingObject selectable)
+					selectable.IsSelected = false;
+			}
+
+			this.isDragging = false;
+			this.draggingObject = null;
+			this.Invalidate();
+			return false;
+		}
+
+		public override bool OnMouseMove(Point location, MouseButtons buttons)
+		{
+			if (this.isDragging && this.draggingObject != null
+				&& (buttons & MouseButtons.Left) == MouseButtons.Left)
+			{
+				RGFloat dx = location.X - this.dragMouseStart.X;
+				RGFloat dy = location.Y - this.dragMouseStart.Y;
+				this.draggingObject.Location = new Point(
+					this.dragObjectStart.X + dx,
+					this.dragObjectStart.Y + dy);
+				this.Invalidate();
+				return true;
+			}
+
+			return base.OnMouseMove(location, buttons);
+		}
+
+		public override bool OnMouseUp(Point location, MouseButtons buttons)
+		{
+			if (this.isDragging)
+			{
+				this.isDragging = false;
+				this.draggingObject = null;
+				this.Invalidate();
+				return true;
+			}
+
+			return base.OnMouseUp(location, buttons);
+		}
+		#endregion // 浮动对象选中与拖拽
 	}
 
 	internal class WorksheetDrawingObjectCollection : DrawingObjectCollection

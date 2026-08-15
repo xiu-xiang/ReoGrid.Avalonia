@@ -75,7 +75,11 @@ namespace unvell.ReoGrid.Views
 		#region UI Hanlders
 		public override bool OnMouseDown(Point location, MouseButtons buttons)
 		{
-			return this.sheet.drawingCanvas.OnMouseDown(location, buttons);
+			bool handled = this.sheet.drawingCanvas.OnMouseDown(location, buttons);
+			// 命中浮动对象后抢焦点，确保拖拽时 Move/Up 仍路由到本视口（离开对象边界也能跟手）
+			if (handled)
+				this.SetFocus();
+			return handled;
 		}
 
 		public override bool OnMouseMove(Point location, MouseButtons buttons)
@@ -85,7 +89,10 @@ namespace unvell.ReoGrid.Views
 
 		public override bool OnMouseUp(Point location, MouseButtons buttons)
 		{
-			return this.sheet.drawingCanvas.OnMouseUp(location, buttons);
+			bool handled = this.sheet.drawingCanvas.OnMouseUp(location, buttons);
+			if (handled)
+				this.FreeFocus();
+			return handled;
 		}
 
 		public override bool OnMouseDoubleClick(Point location, MouseButtons buttons)
