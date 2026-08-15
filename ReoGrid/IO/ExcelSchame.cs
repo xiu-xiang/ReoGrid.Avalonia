@@ -1642,6 +1642,10 @@ namespace unvell.ReoGrid.IO.OpenXML.Schema
 		[XmlElement("areaChart")]
 		public AreaChart areaChart;
 
+		/// <summary>散点图（水平井参数图表 NPOI 写入类型）。</summary>
+		[XmlElement("scatterChart")]
+		public ScatterChart scatterChart;
+
 		[XmlElement("valAx")]
 		public ValueAxis valueAxis;
 	}
@@ -1681,6 +1685,16 @@ namespace unvell.ReoGrid.IO.OpenXML.Schema
 	{
 		[XmlElement("ser")]
 		public List<AreaChartSerial> serials;
+
+		[XmlElement("dLbls")]
+		public DataLabels labels;
+	}
+
+	/// <summary>OOXML c:scatterChart（水平井压裂段参数图）。</summary>
+	public class ScatterChart
+	{
+		[XmlElement("ser")]
+		public List<ScatterChartSerial> serials;
 
 		[XmlElement("dLbls")]
 		public DataLabels labels;
@@ -1743,6 +1757,22 @@ namespace unvell.ReoGrid.IO.OpenXML.Schema
 		public ChartText chartLabel;
 
 		[XmlElement("val")]
+		public ChartDataValues values;
+
+		[XmlIgnore]
+		public ChartText ChartLabel { get { return this.chartLabel; } }
+
+		[XmlIgnore]
+		public ChartDataValues Values { get { return this.values; } }
+	}
+
+	/// <summary>散点图系列：Y 值走 Values，供现有 ReadDataSerial / LineChart 近似显示。</summary>
+	public class ScatterChartSerial : IChartSerial
+	{
+		[XmlElement("tx")]
+		public ChartText chartLabel;
+
+		[XmlElement("yVal")]
 		public ChartDataValues values;
 
 		[XmlIgnore]

@@ -2319,6 +2319,28 @@ namespace unvell.ReoGrid.IO.OpenXML
 				};
 #endregion // Area Chart Plot Area
 			}
+			else if (plot.scatterChart != null)
+			{
+				// 水平井参数图等：NPOI 写 scatterChart；ReoGrid 无独立散点控件，先用折线近似展示序列。
+#region Scatter Chart Plot Area
+				if (plot.scatterChart.serials != null)
+				{
+					foreach (var ser in plot.scatterChart.serials)
+					{
+						ReadDataSerial(dataSource, rgSheet, ser);
+					}
+				}
+
+				rgChart = new Chart.LineChart()
+				{
+					DataSource = dataSource,
+				};
+#endregion // Scatter Chart Plot Area
+			}
+
+			// 未识别的图表类型（或序列为空）不得空引用崩溃，跳过该 drawing 即可。
+			if (rgChart == null)
+				return null;
 
 			bool showLegend = false;
 
@@ -2441,7 +2463,8 @@ namespace unvell.ReoGrid.IO.OpenXML
 
 		private static void AddRunIntoRichText(Document doc, RichText rt, Run r)
 		{
-			if (string.IsNullOrEmpty(r.text.innerText))
+			// 部分 xlsx 的共享字符串 run 无 text 节点，避免空引用。
+			if (r?.text == null || string.IsNullOrEmpty(r.text.innerText))
 			{
 				// FIXME: need support to read single white space XML text
 				//        https://github.com/unvell/ReoGrid/issues/29
@@ -2471,13 +2494,11 @@ namespace unvell.ReoGrid.IO.OpenXML
 					int.TryParse(rpr.sizeAttr, out intFontSize);
 					fontSize = intFontSize / 100f;
 				}
-#if DEBUG
+				// 共享字符串富文本 run 常无字号节点；沿用上方默认 8.5，勿 Debug.Assert 中断加载。
 				else
 				{
-					Debug.Assert(false); // not found font size
+					// fontSize 保持方法开头的默认值
 				}
-#endif // DEBUG
-
 				if (rpr.color != null)
 				{
 					ConvertFromIndexedColor(doc, rpr.color, ref foreColor);
