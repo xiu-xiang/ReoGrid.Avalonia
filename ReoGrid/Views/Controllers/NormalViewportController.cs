@@ -1084,8 +1084,12 @@ namespace unvell.ReoGrid.Views
 
         public void Freeze(CellPosition freezePos, FreezeArea area = ReoGrid.FreezeArea.LeftTop)
         {
-            // origin freeze-viewports 
-            Rectangle cellPosition = worksheet.GetCellBounds(freezePos);
+            // 冻结分割点必须用行列头物理坐标，不能用 GetCellBounds：
+            // 储量估算详表等模板在冻结线处常有跨行/跨列合并（如 G2:G5），
+            // GetCellBounds 会回到合并区左上角，导致滚动区 ViewStart 偏小，表头与行号重复显示。
+            Point freezeStart = freezePos == CellPosition.Zero
+                ? new Point(0, 0)
+                : worksheet.GetCellPhysicsPosition(freezePos.Row, freezePos.Col);
 
             if (freezePos == CellPosition.Zero)
             {
@@ -1140,9 +1144,9 @@ namespace unvell.ReoGrid.Views
 
                 #region Set viewports view start postion
                 topLeftViewport.ViewStart = new Point(0, 0);
-                leftBottomViewport.ViewStart = new Point(0, cellPosition.Y);
-                rightTopViewport.ViewStart = new Point(cellPosition.X, 0);
-                rightBottomViewport.ViewStart = new Point(cellPosition.X, cellPosition.Y);
+                leftBottomViewport.ViewStart = new Point(0, freezeStart.Y);
+                rightTopViewport.ViewStart = new Point(freezeStart.X, 0);
+                rightBottomViewport.ViewStart = new Point(freezeStart.X, freezeStart.Y);
                 #endregion // Set viewports view start postion
 
                 #region Decides the scroll directions
