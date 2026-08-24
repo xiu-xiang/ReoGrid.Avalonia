@@ -1,4 +1,4 @@
-﻿/*****************************************************************************
+/*****************************************************************************
  * 
  * ReoGrid - .NET Spreadsheet Control
  * 
@@ -1659,7 +1659,21 @@ namespace unvell.ReoGrid
 		#endregion // Insert
 
 		#region Delete
+		/// <summary>
+		/// 删除行列后调整最大已用索引，避免已删除区域继续参与 Excel 保存。
+		/// </summary>
+		/// <param name="currentMax">删除前的最大已用索引。</param>
+		/// <param name="start">删除起始索引。</param>
+		/// <param name="count">删除数量。</param>
+		/// <returns>删除后的最大已用索引。</returns>
+		private static int AdjustMaxIndexAfterDelete(int currentMax, int start, int count)
+		{
+			if (currentMax < start)
+				return currentMax;
 
+			int end = start + count;
+			return currentMax >= end ? currentMax - count : start - 1;
+		}
 		/// <summary>
 		/// Delete rows from speicifed number of row
 		/// </summary>
