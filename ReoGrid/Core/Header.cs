@@ -1,4 +1,4 @@
-/*****************************************************************************
+﻿/*****************************************************************************
  * 
  * ReoGrid - .NET Spreadsheet Control
  * 
@@ -1659,6 +1659,7 @@ namespace unvell.ReoGrid
 		#endregion // Insert
 
 		#region Delete
+
 		/// <summary>
 		/// 删除行列后调整最大已用索引，避免已删除区域继续参与 Excel 保存。
 		/// </summary>
@@ -1674,6 +1675,7 @@ namespace unvell.ReoGrid
 			int end = start + count;
 			return currentMax >= end ? currentMax - count : start - 1;
 		}
+
 		/// <summary>
 		/// Delete rows from speicifed number of row
 		/// </summary>
@@ -2135,24 +2137,20 @@ namespace unvell.ReoGrid
 			#region Update used range
 			// bug: rgf will save the rows has been removed, error happens when next time loading
 			// https://reogrid.net/forum/viewtopic.php?id=277
-			if (this.cells.MaxRow >= endrow)
-			{
-				this.cells.MaxRow -= count;
-			}
-			if (this.hBorders.MaxRow >= endrow)
-			{
-				this.hBorders.MaxRow -= count;
-			}
-			if (this.vBorders.MaxRow >= endrow)
-			{
-				this.vBorders.MaxRow -= count;
-			}
+			// 内容虽已上移，但各稀疏数组与行头的最大索引也必须同步收缩，
+			// 否则 ExcelWriter 会继续序列化删除前尾部的空白行。
+			this.cells.MaxRow = AdjustMaxIndexAfterDelete(this.cells.MaxRow, row, count);
+			this.hBorders.MaxRow = AdjustMaxIndexAfterDelete(this.hBorders.MaxRow, row, count);
+			this.vBorders.MaxRow = AdjustMaxIndexAfterDelete(this.vBorders.MaxRow, row, count);
+			this.maxRowHeader = AdjustMaxIndexAfterDelete(this.maxRowHeader, row, count);
 			#endregion // Update used range
 
 			#region Update frozen rows
-			if (row < this.FreezePos.Row)
+			if (row <= this.FreezePos.Row)
 			{
-				this.FreezePos = FixPos(new CellPosition(this.FreezePos.Row - count, this.FreezePos.Col));
+				int freezeRow = AdjustMaxIndexAfterDelete(this.FreezePos.Row, row, count);
+				freezeRow = Math.Max(0, Math.Min(freezeRow, this.rows.Count - 1));
+				this.FreezePos = new CellPosition(freezeRow, this.FreezePos.Col);
 
 				// remain the first row to be frozen
 				if (this.FreezePos.Row < 1)
@@ -2650,24 +2648,19 @@ namespace unvell.ReoGrid
 			#region Update used range
 			// bug: rgf will save the rows has been removed, error happens when next time loading
 			// https://reogrid.net/forum/viewtopic.php?id=277
-			if (this.cells.MaxCol >= endcol)
-			{
-				this.cells.MaxCol -= count;
-			}
-			if (this.hBorders.MaxCol >= endcol)
-			{
-				this.hBorders.MaxCol -= count;
-			}
-			if (this.vBorders.MaxCol >= endcol)
-			{
-				this.vBorders.MaxCol -= count;
-			}
+			// 与删行一致，同步收缩内容、边框及列头的最大已用索引。
+			this.cells.MaxCol = AdjustMaxIndexAfterDelete(this.cells.MaxCol, col, count);
+			this.hBorders.MaxCol = AdjustMaxIndexAfterDelete(this.hBorders.MaxCol, col, count);
+			this.vBorders.MaxCol = AdjustMaxIndexAfterDelete(this.vBorders.MaxCol, col, count);
+			this.maxColumnHeader = AdjustMaxIndexAfterDelete(this.maxColumnHeader, col, count);
 			#endregion // Update used range
 
 			#region Update frozen rows
-			if (col < this.FreezePos.Col)
+			if (col <= this.FreezePos.Col)
 			{
-				this.FreezePos = FixPos(new CellPosition(this.FreezePos.Col, this.FreezePos.Col - count));
+				int freezeCol = AdjustMaxIndexAfterDelete(this.FreezePos.Col, col, count);
+				freezeCol = Math.Max(0, Math.Min(freezeCol, this.cols.Count - 1));
+				this.FreezePos = new CellPosition(this.FreezePos.Row, freezeCol);
 
 				// remain the first column to be frozen
 				if (this.FreezePos.Col < 1)
