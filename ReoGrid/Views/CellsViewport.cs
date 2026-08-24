@@ -1989,11 +1989,14 @@ namespace unvell.ReoGrid.Views
             // view only contain one column
             if (visibleRegion.endCol <= visibleRegion.startCol)
             {
-                return visibleRegion.startCol;
+                // 删除列后可见区域可能尚未刷新，返回值必须限制在当前列集合内。
+                return Math.Max(0, Math.Min(visibleRegion.startCol, sheet.cols.Count - 1));
             }
 
             // binary search to find the column which contains the give position
-            return ArrayHelper.QuickFind((visibleRegion.endCol - visibleRegion.startCol + 1) / 2,
+            int splitCol = visibleRegion.startCol + (visibleRegion.endCol - visibleRegion.startCol) / 2;
+            splitCol = Math.Max(0, Math.Min(splitCol, sheet.cols.Count - 1));
+            return ArrayHelper.QuickFind(splitCol,
                 0, sheet.cols.Count - 1, i =>
                 {
                     var colHeader = sheet.cols[i];
@@ -2018,7 +2021,8 @@ namespace unvell.ReoGrid.Views
             // view only contain one row
             if (visibleRegion.endRow <= visibleRegion.startRow)
             {
-                return visibleRegion.startRow;
+                // 删除行后可见区域可能尚未刷新，返回值必须限制在当前行集合内。
+                return Math.Max(0, Math.Min(visibleRegion.startRow, sheet.rows.Count - 1));
             }
 
 #if DEBUG
@@ -2027,7 +2031,9 @@ namespace unvell.ReoGrid.Views
             {
 #endif
             // binary search to find the row which contains the give position
-            return ArrayHelper.QuickFind((visibleRegion.endRow - visibleRegion.startRow + 1) / 2,
+            int splitRow = visibleRegion.startRow + (visibleRegion.endRow - visibleRegion.startRow) / 2;
+            splitRow = Math.Max(0, Math.Min(splitRow, sheet.rows.Count - 1));
+            return ArrayHelper.QuickFind(splitRow,
                 0, sheet.rows.Count - 1, i =>
                 {
                     var rowHeader = sheet.rows[i];

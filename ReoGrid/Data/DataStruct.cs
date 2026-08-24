@@ -1710,6 +1710,14 @@ namespace unvell.ReoGrid.Data
 		/// <returns>element as result will be returned</returns>
 		public static int QuickFind(int split, int start, int end, Func<int, int> compare)
 		{
+			if (start > end)
+				return -1;
+
+			// 调用方的可见区域可能在删行/删列后的同一帧仍是旧值，
+			// 初始分割点必须限制在当前集合对应的搜索区间内。
+			if (split < start) split = start;
+			else if (split > end) split = end;
+
 			if (split == start || split == end) return split;
 
 			int r = compare(split);
