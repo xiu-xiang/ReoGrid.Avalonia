@@ -2343,18 +2343,56 @@ namespace unvell.ReoGrid.IO.OpenXML
 				return null;
 
 			bool showLegend = false;
+			var legendPosition = Chart.LegendPosition.Top;
 
 			if (chart.legend != null)
 			{
-				if (chart.legend.legendPos != null)
+				showLegend = true;
+
+				if (chart.legend.legendPos != null
+					&& !string.IsNullOrEmpty(chart.legend.legendPos.value))
 				{
-					showLegend = true;
+					legendPosition = ParseLegendPosition(chart.legend.legendPos.value);
 				}
 			}
 
 			rgChart.ShowLegend = showLegend;
 
+			if (rgChart.PrimaryLegend != null)
+			{
+				rgChart.PrimaryLegend.LegendPosition = legendPosition;
+			}
+
 			return rgChart;
+		}
+
+		/// <summary>
+		/// 将 OOXML legendPos 映射为 ReoGrid 图例位置。
+		/// </summary>
+		private static Chart.LegendPosition ParseLegendPosition(string pos)
+		{
+			if (string.IsNullOrEmpty(pos))
+			{
+				return Chart.LegendPosition.Top;
+			}
+
+			switch (pos.ToLowerInvariant())
+			{
+				case "t":
+				case "tr":
+					return Chart.LegendPosition.Top;
+
+				case "b":
+				case "bl":
+					return Chart.LegendPosition.Bottom;
+
+				case "l":
+					return Chart.LegendPosition.Left;
+
+				case "r":
+				default:
+					return Chart.LegendPosition.Right;
+			}
 		}
 
 		private static Chart.WorksheetChartDataSerial ReadDataSerial(Chart.WorksheetChartDataSource dataSource,
@@ -2364,34 +2402,55 @@ namespace unvell.ReoGrid.IO.OpenXML
 
 #if FORMULA
 			CellPosition labelAddress = CellPosition.Empty;
+			string fixedLabel = null;
 
 			var label = serial.ChartLabel;
 
-			if (label != null
-				&& label.strRef != null)
+			if (label != null)
 			{
-				if (label.strRef.formula != null
-					&& !string.IsNullOrEmpty(label.strRef.formula))
+				if (label.strRef != null)
 				{
-					var serialNameVal = Formula.Evaluator.Evaluate(rgSheet.workbook, label.strRef.formula);
-
-					if (serialNameVal.type == Formula.FormulaValueType.Cell)
+					if (label.strRef.formula != null
+						&& !string.IsNullOrEmpty(label.strRef.formula))
 					{
-						labelAddress = (CellPosition)serialNameVal.value;
+						var serialNameVal = Formula.Evaluator.Evaluate(rgSheet.workbook, label.strRef.formula);
+
+						if (serialNameVal.type == Formula.FormulaValueType.Cell)
+						{
+							labelAddress = (CellPosition)serialNameVal.value;
+						}
+						else if (serialNameVal.type == Formula.FormulaValueType.Range)
+						{
+							// 系列名有时引用单行/单列区域，取左上角单元格
+							var range = (RangePosition)serialNameVal.value;
+							labelAddress = new CellPosition(range.Row, range.Col);
+						}
+						else if (serialNameVal.type == Formula.FormulaValueType.String)
+						{
+							fixedLabel = (string)serialNameVal.value;
+						}
+					}
+
+					// NPOI/Excel 写入的系列名常存于 strCache，而非单元格引用
+					if (string.IsNullOrEmpty(fixedLabel) && labelAddress.IsEmpty)
+					{
+						fixedLabel = ReadSerialLabelFromCache(label.strRef);
 					}
 				}
+				else if (label.directValue != null && !string.IsNullOrEmpty(label.directValue))
+				{
+					fixedLabel = label.directValue;
+				}
+			}
 
-				//if (label.strRef.strCache != null
-				//	&& label.strRef.strCache.ptList != null
-				//	&& label.strRef.strCache.ptList.Count > 0)
-				//{
-				//	var pt = label.strRef.strCache.ptList[0];
-
-				//	if (pt.value != null)
-				//	{
-				//		serialName = pt.value.val;
-				//	}
-				//}
+			// 单元格引用存在但文本为空时，再尝试 strCache
+			if (string.IsNullOrEmpty(fixedLabel) && !labelAddress.IsEmpty)
+			{
+				var cellText = rgSheet.GetCellText(labelAddress);
+				if (string.IsNullOrWhiteSpace(cellText) && label?.strRef != null)
+				{
+					fixedLabel = ReadSerialLabelFromCache(label.strRef);
+				}
 			}
 
 			var values = serial.Values;
@@ -2411,12 +2470,14 @@ namespace unvell.ReoGrid.IO.OpenXML
 						// transfer to multiple serials
 						for (int r = range.Row; r <= range.EndRow; r++)
 						{
-							dataSource.AddSerial(rgSheet, labelAddress, new RangePosition(r, range.Col, 1, 1));
+							var added = dataSource.AddSerial(rgSheet, labelAddress, new RangePosition(r, range.Col, 1, 1));
+							ApplySerialFixedLabel(added, fixedLabel);
 						}
 					}
 					else
 					{
-						dataSource.AddSerial(rgSheet, labelAddress, range);
+						var added = dataSource.AddSerial(rgSheet, labelAddress, range);
+						ApplySerialFixedLabel(added, fixedLabel);
 					}
 				}
 			}
@@ -2424,6 +2485,37 @@ namespace unvell.ReoGrid.IO.OpenXML
 #endif // FORMULA
 
 			return null;
+		}
+
+		/// <summary>
+		/// 从 Excel 系列标签 strCache 读取固定名称。
+		/// </summary>
+		private static string ReadSerialLabelFromCache(StringReference strRef)
+		{
+			if (strRef?.strCache?.ptList == null || strRef.strCache.ptList.Count == 0)
+			{
+				return null;
+			}
+
+			var pt = strRef.strCache.ptList[0];
+
+			if (pt?.value != null && !string.IsNullOrEmpty(pt.value.val))
+			{
+				return pt.value.val;
+			}
+
+			return null;
+		}
+
+		/// <summary>
+		/// 将固定系列名写入数据序列（供图例显示）。
+		/// </summary>
+		private static void ApplySerialFixedLabel(Chart.WorksheetChartDataSerial serial, string fixedLabel)
+		{
+			if (serial != null && !string.IsNullOrEmpty(fixedLabel))
+			{
+				serial.FixedLabel = fixedLabel;
+			}
 		}
 #endregion // Chart
 #endif // DRAWING

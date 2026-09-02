@@ -214,14 +214,19 @@ namespace unvell.ReoGrid.Chart
 
 			if (orientation == AxisOrientation.Vertical)
 			{
-				RGFloat stepY = (clientRect.Height - fontHeight) / ai.Levels;
-				var textRect = new Rectangle(0, clientRect.Bottom - fontHeight, clientRect.Width, fontHeight);
+				// 与 AxisGuideLinePlotView 使用相同步进，保证刻度与网格线对齐
+				RGFloat stepY = clientRect.Height / ai.Levels;
+
+				// 仅绘制 Y 轴脊线（与绘图区左边界衔接），不在刻度文字区绘制水平网格
+				g.DrawLine(clientRect.Right, clientRect.Top, clientRect.Right, clientRect.Bottom, SolidColor.Silver);
 
 				for (int level = 0; level <= ai.Levels; level++)
 				{
+					RGFloat gridY = clientRect.Bottom - level * stepY;
+					var textRect = new Rectangle(0, gridY - fontHeight / 2, clientRect.Width - 4, fontHeight);
+
 					g.DrawText(Math.Round(rowValue, Math.Abs(ai.Scaler)).ToString(), this.FontName, this.FontSize, this.ForeColor, textRect, ReoGridHorAlign.Right, ReoGridVerAlign.Middle);
 
-					textRect.Y -= stepY;
 					rowValue += Math.Round(ai.LargeStride, Math.Abs(ai.Scaler));
 				}
 			}
@@ -373,6 +378,9 @@ namespace unvell.ReoGrid.Chart
 					g.DrawLine(clientRect.X, y, clientRect.Right, y, this.LineColor);
 					y -= stepY;
 				}
+
+				// 绘制绘图区左边界（Y 轴脊线），避免左下角网格缺口透明
+				g.DrawLine(clientRect.X, clientRect.Top, clientRect.X, clientRect.Bottom, this.LineColor);
 			}
 
 			if (axisChart.ShowVerticalGuideLines)

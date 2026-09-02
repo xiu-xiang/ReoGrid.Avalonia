@@ -383,7 +383,11 @@ namespace unvell.ReoGrid.Rendering
                      this.resourceManager.GetBrush(color));
 
                 ft.MaxTextWidth = rect.Width;
-                ft.MaxTextHeight = rect.Height;
+                // 高度过小时 Avalonia FormattedText 可能整段不绘制
+                if (rect.Height >= size * 0.75)
+                {
+                    ft.MaxTextHeight = rect.Height;
+                }
 
                 switch (halign)
                 {

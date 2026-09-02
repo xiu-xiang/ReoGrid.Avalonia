@@ -626,6 +626,12 @@ namespace unvell.ReoGrid.Drawing
 			this.halfHeight = this.innerHeight / 2;
 			this.OriginPoint = new Point(halfWidth, halfHeight);
 
+			// 拖拽/缩放时同步更新选中框角点
+			if (this.IsSelected)
+			{
+				this.UpdateResizeThumbPoints();
+			}
+
 			base.InternalBoundsUpdate(oldBounds);
 		}
 

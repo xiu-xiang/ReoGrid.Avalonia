@@ -1786,6 +1786,10 @@ namespace unvell.ReoGrid.IO.OpenXML.Schema
 	{
 		[XmlElement("strRef")]
 		public StringReference strRef;
+
+		/// <summary>系列名直接文本（无 strRef 时使用）。</summary>
+		[XmlElement("v")]
+		public ElementText directValue;
 	}
 
 	public class StringReference

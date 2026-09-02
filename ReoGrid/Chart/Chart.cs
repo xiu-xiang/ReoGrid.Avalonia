@@ -132,6 +132,7 @@ namespace unvell.ReoGrid.Chart
 					{
 						case LegendPosition.Left:
 							bodyBounds.X += legendSize.Width + plotLegendSpacing;
+							bodyBounds.Width -= legendSize.Width + plotLegendSpacing;
 							break;
 
 						default:
@@ -141,6 +142,7 @@ namespace unvell.ReoGrid.Chart
 
 						case LegendPosition.Top:
 							bodyBounds.Y += legendSize.Height + plotLegendSpacing;
+							bodyBounds.Height -= legendSize.Height + plotLegendSpacing;
 							break;
 
 						case LegendPosition.Bottom:
@@ -217,8 +219,22 @@ namespace unvell.ReoGrid.Chart
 							legendSize.Width, legendSize.Height);
 
 				case LegendPosition.Top:
-					return new Rectangle(plotViewBounds.X + (plotViewBounds.Width - legendSize.Width) / 2,
-						0, legendSize.Width, legendSize.Height);
+					// 置于标题下方；宽度超出时左对齐，避免负坐标溢出
+					{
+						RGFloat legendX = plotViewBounds.X;
+						RGFloat legendWidth = legendSize.Width;
+
+						if (legendWidth <= plotViewBounds.Width)
+						{
+							legendX += (plotViewBounds.Width - legendWidth) / 2;
+						}
+						else
+						{
+							legendWidth = plotViewBounds.Width;
+						}
+
+						return new Rectangle(legendX, plotViewBounds.Y, legendWidth, legendSize.Height);
+					}
 
 				case LegendPosition.Bottom:
 					return new Rectangle(plotViewBounds.X + (plotViewBounds.Width - legendSize.Width) / 2, 
@@ -1010,9 +1026,12 @@ namespace unvell.ReoGrid.Chart
 		protected virtual void UpdateAxisLabelViewLayout(Rectangle plotRect)
 		{
 			const RGFloat spacing = 10;
+			const RGFloat horizontalAxisHeight = 24;
+			const RGFloat verticalAxisGutter = 40;
 
-			this.VerticalAxisInfoView.Bounds = new Rectangle(this.ClientBounds.X, plotRect.Y - 5, 30, plotRect.Height + 10);
-			this.HorizontalAxisInfoView.Bounds = new Rectangle(plotRect.X, plotRect.Bottom + spacing, plotRect.Width, 10);
+			// Y 轴区域宽度覆盖左侧留白（含与绘图区间距），与 GetPlotViewBounds 一致
+			this.VerticalAxisInfoView.Bounds = new Rectangle(this.ClientBounds.X, plotRect.Y, verticalAxisGutter, plotRect.Height);
+			this.HorizontalAxisInfoView.Bounds = new Rectangle(plotRect.X, plotRect.Bottom + spacing, plotRect.Width, horizontalAxisHeight);
 		}
 
 		protected override Rectangle GetPlotViewBounds(Rectangle bodyBounds)
@@ -1020,8 +1039,10 @@ namespace unvell.ReoGrid.Chart
 			var rect = base.GetPlotViewBounds(bodyBounds);
 
 			const RGFloat spacing = 10;
+			const RGFloat horizontalAxisHeight = 24;
+			const RGFloat verticalAxisGutter = 40;
 
-			return new Rectangle(rect.X + 30 + spacing, rect.Y, rect.Width - 30 - spacing, rect.Height - 10);
+			return new Rectangle(rect.X + verticalAxisGutter, rect.Y, rect.Width - verticalAxisGutter, rect.Height - horizontalAxisHeight - spacing);
 		}
 
 		#endregion // Layout

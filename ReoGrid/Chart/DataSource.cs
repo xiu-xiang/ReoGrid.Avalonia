@@ -433,6 +433,11 @@ namespace unvell.ReoGrid.Chart
 		//private string name;
 		public CellPosition LabelAddress { get; set; }
 
+		/// <summary>
+		/// 固定系列名称（来自 Excel strCache 等，非单元格引用时使用）。
+		/// </summary>
+		public string FixedLabel { get; set; }
+
 		protected WorksheetChartDataSerial(WorksheetChartDataSource dataSource, Worksheet worksheet, CellPosition labelAddress)
 		{
 			if (dataSource == null)
@@ -543,8 +548,16 @@ namespace unvell.ReoGrid.Chart
 		/// </summary>
 		public string Label
 		{
-			get { return this.worksheet == null || this.LabelAddress.IsEmpty ? string.Empty
-					: this.worksheet.GetCellText(this.LabelAddress); }
+			get
+			{
+				if (!string.IsNullOrEmpty(this.FixedLabel))
+				{
+					return this.FixedLabel;
+				}
+
+				return this.worksheet == null || this.LabelAddress.IsEmpty ? string.Empty
+					: this.worksheet.GetCellText(this.LabelAddress);
+			}
 		}
 
 		/// <summary>
