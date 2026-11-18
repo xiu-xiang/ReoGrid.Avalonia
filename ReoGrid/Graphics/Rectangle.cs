@@ -494,5 +494,4 @@ namespace unvell.ReoGrid.Graphics
 			sw.Stop();
 			sb.AppendLine(sw.ElapsedMilliseconds + " ms.");
 
-			MessageBox.Show(sb.ToString());
 */

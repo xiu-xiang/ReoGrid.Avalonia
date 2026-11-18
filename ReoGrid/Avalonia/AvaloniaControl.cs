@@ -262,85 +262,21 @@ namespace unvell.ReoGrid
 
             try
             {
-                this.RemoveWorksheet(index);
+                // 等待确认期间工作表集合可能发生变化，按原对象删除。
+                if (this.Worksheets.Count > 1 && this.Worksheets.Contains(sheet))
+                    this.RemoveWorksheet(sheet);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("RemoveWorksheet failed: " + ex);
+                await ReoGridMessages.Service.ShowAsync("删除工作表失败：" + ex.Message, "删除工作表");
             }
         }
 
-        /// <summary>删除工作表前的确认对话框（不依赖业务层 MsgBox）。</summary>
-        private async Task<bool> ConfirmDeleteWorksheetAsync(string sheetName)
+        /// <summary>经调用程序配置的服务确认删除工作表。</summary>
+        /// <remarks>对应本组件 TryDeleteWorksheetFromTabAsync，窗口样式由宿主负责。</remarks>
+        private Task<bool> ConfirmDeleteWorksheetAsync(string sheetName)
         {
-            var tcs = new TaskCompletionSource<bool>();
-            var decided = false;
-            var yesBtn = new Button
-            {
-                Content = LanguageResource.Menu_DeleteSheet,
-                MinWidth = 72,
-                Padding = new Thickness(12, 4),
-            };
-            var noBtn = new Button
-            {
-                Content = "取消",
-                MinWidth = 72,
-                Padding = new Thickness(12, 4),
-            };
-
-            var dlg = new Window
-            {
-                Title = "删除工作表",
-                Width = 380,
-                Height = 150,
-                CanResize = false,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Content = new StackPanel
-                {
-                    Margin = new Thickness(16),
-                    Spacing = 16,
-                    Children =
-                    {
-                        new TextBlock
-                        {
-                            Text = $"确定删除工作表「{sheetName}」吗？删除后无法撤销。",
-                            TextWrapping = TextWrapping.Wrap,
-                        },
-                        new StackPanel
-                        {
-                            Orientation = Orientation.Horizontal,
-                            HorizontalAlignment = HorizontalAlignment.Right,
-                            Spacing = 8,
-                            Children = { yesBtn, noBtn },
-                        },
-                    },
-                },
-            };
-
-            yesBtn.Click += (_, _) =>
-            {
-                decided = true;
-                tcs.TrySetResult(true);
-                dlg.Close();
-            };
-            noBtn.Click += (_, _) =>
-            {
-                decided = true;
-                tcs.TrySetResult(false);
-                dlg.Close();
-            };
-            dlg.Closed += (_, _) =>
-            {
-                if (!decided)
-                    tcs.TrySetResult(false);
-            };
-
-            if (TopLevel.GetTopLevel(this) is Window owner)
-                await dlg.ShowDialog(owner);
-            else
-                dlg.Show();
-
-            return await tcs.Task;
+            return ReoGridMessages.Service.ConfirmAsync($"确定删除工作表「{sheetName}」吗？删除后无法撤销。", "删除工作表");
         }
 
         private void MouseUpHandler(object sender, PointerReleasedEventArgs e)

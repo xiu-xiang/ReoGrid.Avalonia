@@ -96,7 +96,8 @@ namespace unvell.ReoGrid
 			{
 				// Swallow or pop-up, not sure
 				// Trace.Write(e.ToString());
-				MessageBox.Show(e.ToString());
+				// 历史 WinForms 路径同样由调用程序决定消息外观。
+                _ = ReoGridMessages.Service.ShowAsync(e.ToString(), "剪贴板错误");
 			}
 		}
 	}

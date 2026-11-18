@@ -618,52 +618,12 @@ namespace unvell.ReoGrid.AvaloniaPlatform
 			Close();
 		}
 
-		private static async Task<string> PromptAsync(Control host, string title, string label)
-		{
-			var top = TopLevel.GetTopLevel(host) as Window;
-			var box = new TextBox { MinWidth = 220, Margin = new Thickness(0, 8, 0, 12) };
-			var ok = new Button { Content = "确定", MinWidth = 72, Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
-			var cancel = new Button { Content = "取消", MinWidth = 72, IsCancel = true };
-			string result = null;
-			bool confirmed = false;
-
-			var dialog = new Window
-			{
-				Title = title,
-				Width = 320,
-				SizeToContent = SizeToContent.Height,
-				WindowStartupLocation = WindowStartupLocation.CenterOwner,
-				CanResize = false,
-				Content = new Border
-				{
-					Padding = new Thickness(16),
-					Child = new StackPanel
-					{
-						Children =
-						{
-							new TextBlock { Text = label },
-							box,
-							new StackPanel
-							{
-								Orientation = Orientation.Horizontal,
-								HorizontalAlignment = HorizontalAlignment.Right,
-								Children = { ok, cancel },
-							},
-						},
-					},
-				},
-			};
-
-			ok.Click += (_, _) => { confirmed = true; result = box.Text ?? string.Empty; dialog.Close(); };
-			cancel.Click += (_, _) => { confirmed = false; result = null; dialog.Close(); };
-
-			if (top != null)
-				await dialog.ShowDialog(top);
-			else
-				dialog.Show();
-
-			return confirmed ? result : null;
-		}
+        /// <summary>通过宿主统一输入窗口获取筛选条件。</summary>
+        /// <remarks>对应本文件原 PromptAsync；取消返回 null。</remarks>
+        private static Task<string> PromptAsync(Control host, string title, string label)
+        {
+            return ReoGridMessages.Service.PromptAsync(label, title);
+        }
 
 		/// <summary>在列头筛选按钮处弹出面板。</summary>
 		internal static void ShowFilterPanel(Data.AutoColumnFilter.AutoColumnFilterBody headerBody, Point point)

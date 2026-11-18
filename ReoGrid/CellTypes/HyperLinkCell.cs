@@ -256,7 +256,6 @@ namespace unvell.ReoGrid.CellTypes
 				}
 				catch (Exception ex)
 				{
-					//MessageBox.Show("Error to open link: " + ex.Message);
 					this.Cell?.Worksheet?.NotifyExceptionHappen(ex);
 				}
 			}
