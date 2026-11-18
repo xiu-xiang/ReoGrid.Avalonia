@@ -833,7 +833,8 @@ namespace unvell.ReoGrid
 		{
 			if (cell == null || string.IsNullOrEmpty(cell.DisplayText)) return;
 
-			if (ig == null && this.controlAdapter != null)
+      if (!IsColumnVisible(cell.Column)) return;
+      if (ig == null && this.controlAdapter != null)
 			{
 				ig = this.controlAdapter.Renderer;
 			}
